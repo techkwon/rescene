@@ -5,6 +5,10 @@
   "author": {
     "name": "techkwon"
   },
+  "license": "MIT",
+  "homepage": "https://github.com/techkwon/rescene",
+  "repository": "https://github.com/techkwon/rescene",
+  "keywords": ["mod", "subagents", "orchestration", "usage", "korean", "fan-made"],
   "types": "./types/index.d.ts",
   "userConfig": {
     "leaderVoice": {
