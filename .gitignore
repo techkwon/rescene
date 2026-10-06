@@ -1,0 +1,7 @@
+# Laid by Claude Code once it has loaded the mod; never committed.
+.claude-plugin/types/
+.DS_Store
+node_modules/
+# Left beside Orca specs and results while the mod is tried out.
+*.live.log
+*.rescene-*.md

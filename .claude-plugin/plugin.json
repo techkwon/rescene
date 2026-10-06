@@ -1,0 +1,68 @@
+{
+  "name": "rescene",
+  "version": "0.8.0",
+  "description": "리센느 모드: 원이가 지휘하고 리브·미나미·메이·제나가 작업을 맡아 보고한다 (Claude 서브에이전트 + Orca 작업자)",
+  "author": {
+    "name": "techkwon"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "leaderVoice": {
+      "type": "boolean",
+      "title": "원이 말투",
+      "description": "주 세션이 리더 원이 말투로 말한다",
+      "default": true
+    },
+    "memberVoice": {
+      "type": "boolean",
+      "title": "멤버 말투",
+      "description": "서브에이전트가 배정된 멤버 말투로 보고한다",
+      "default": true
+    },
+    "orcaVoice": {
+      "type": "boolean",
+      "title": "Orca 작업자 말투",
+      "description": "fleet-run 작업지시 옆에 멤버 말투를 붙인 사본을 만들어 넘긴다",
+      "default": true
+    },
+    "keepScreen": {
+      "type": "boolean",
+      "title": "Orca 작업자 진행 화면 남기기",
+      "description": "명령이 fleet-run 하나뿐일 때 그 뒤에 tee 를 붙여 진행 화면을 <결과>.live.log 에 남긴다 (명령을 바꾸므로 기본은 꺼짐. Orca 탭으로 띄운 작업자는 이 설정 없이도 화면이 보인다)",
+      "default": false
+    },
+    "band": {
+      "type": "boolean",
+      "title": "입력창 위 현황 띠",
+      "description": "입력창 위에 받는 멤버 고르기와 사용량, 작업 중에는 멤버 현황을 보여 준다",
+      "default": true
+    },
+    "bandStyle": {
+      "type": "string",
+      "title": "입력창 위 띠 모양",
+      "description": "full 은 색 줄, 멤버별 하트와 역할, 사용량 막대를 여러 줄로 크게 보여 준다. compact 는 쉴 때 한 줄, 작업 중 두 줄로 줄인다",
+      "options": [
+        "full",
+        "compact"
+      ],
+      "default": "full"
+    },
+    "autoOpen": {
+      "type": "boolean",
+      "title": "패널 자동 열기",
+      "description": "멤버에게 일이 맡겨지면 현황 패널을 스스로 연다 (손으로 닫으면 /rescene 전까지 다시 열지 않는다)",
+      "default": true
+    },
+    "theme": {
+      "type": "string",
+      "title": "화면 밝기",
+      "description": "멤버 색과 아이콘을 어두운 화면용·밝은 화면용 가운데 무엇으로 그릴지. auto 는 Claude Code 테마 이름을 따른다",
+      "options": [
+        "auto",
+        "dark",
+        "light"
+      ],
+      "default": "auto"
+    }
+  }
+}
