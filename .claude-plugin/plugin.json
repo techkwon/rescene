@@ -1,6 +1,6 @@
 {
   "name": "rescene",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "리센느 모드: 원이가 지휘하고 리브·미나미·메이·제나가 작업을 맡아 보고한다 (Claude 서브에이전트 + Orca 작업자)",
   "author": {
     "name": "techkwon"
@@ -8,7 +8,14 @@
   "license": "MIT",
   "homepage": "https://github.com/techkwon/rescene",
   "repository": "https://github.com/techkwon/rescene",
-  "keywords": ["mod", "subagents", "orchestration", "usage", "korean", "fan-made"],
+  "keywords": [
+    "mod",
+    "subagents",
+    "orchestration",
+    "usage",
+    "korean",
+    "fan-made"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "leaderVoice": {
@@ -44,11 +51,7 @@
     "bandStyle": {
       "type": "string",
       "title": "입력창 위 띠 모양",
-      "description": "full 은 색 줄, 멤버별 하트와 역할, 사용량 막대를 여러 줄로 크게 보여 준다. compact 는 쉴 때 한 줄, 작업 중 두 줄로 줄인다",
-      "options": [
-        "full",
-        "compact"
-      ],
+      "description": "full 또는 compact 를 적는다. full(기본)은 색 줄, 멤버별 하트와 역할, 사용량 막대를 여러 줄로 크게 보여 준다. compact 는 쉴 때 한 줄, 작업 중 두 줄로 줄인다",
       "default": "full"
     },
     "autoOpen": {
@@ -60,12 +63,7 @@
     "theme": {
       "type": "string",
       "title": "화면 밝기",
-      "description": "멤버 색과 아이콘을 어두운 화면용·밝은 화면용 가운데 무엇으로 그릴지. auto 는 Claude Code 테마 이름을 따른다",
-      "options": [
-        "auto",
-        "dark",
-        "light"
-      ],
+      "description": "auto, dark, light 가운데 하나를 적는다. 멤버 색과 아이콘을 어두운 화면용·밝은 화면용 가운데 무엇으로 그릴지 정한다. auto(기본)는 Claude Code 테마 이름을 따른다",
       "default": "auto"
     }
   }

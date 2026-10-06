@@ -1,6 +1,6 @@
 # rescene — 리센느 모드 for Claude Code
 
-Claude Code 안에서 **리센느(RESCENE) 원이가 지휘하고, 리브·미나미·메이·제나가 일을 맡아 자기 말투로 보고하는** 모드(mod, 플러그인)입니다. 누가 지금 무슨 일을 하는지 멤버별 카드로 보여 줍니다. 리마인(리센느 팬)이 만든 비공식 팬 모드입니다. 버전 0.8.0.
+Claude Code 안에서 **리센느(RESCENE) 원이가 지휘하고, 리브·미나미·메이·제나가 일을 맡아 자기 말투로 보고하는** 모드(mod, 플러그인)입니다. 누가 지금 무슨 일을 하는지 멤버별 카드로 보여 줍니다. 리마인(리센느 팬)이 만든 비공식 팬 모드입니다. 버전 0.8.1.
 
 ![세 멤버가 동시에 일하는 화면](docs/screenshots/working.png)
 
@@ -19,6 +19,7 @@ Claude Code 안에서 **리센느(RESCENE) 원이가 지휘하고, 리브·미�
 - [명령](#명령)
 - [설정](#설정)
 - [문제가 생겼을 때](#문제가-생겼을-때)
+- [이 모드가 컴퓨터에서 하는 일](#이-모드가-컴퓨터에서-하는-일)
 - [AI에게 설치와 사용을 맡기려면](#ai에게-설치와-사용을-맡기려면)
 - [Orca fleet-run 연동 (선택)](#orca-fleet-run-연동-선택)
 - [개발](#개발)
@@ -161,9 +162,9 @@ claude plugin uninstall rescene@rescene
 | `leaderVoice` | 원이 말투 | 켬 | 주 세션이 리더 원이 말투로 말함 |
 | `memberVoice` | 멤버 말투 | 켬 | 서브에이전트가 배정된 멤버 말투로 보고함 |
 | `band` | 입력창 위 현황 띠 | 켬 | 받는 멤버 고르기와 사용량, 작업 중에는 멤버 현황을 보여 줌 |
-| `bandStyle` | 입력창 위 띠 모양 | `full` | `full`(색 줄, 멤버별 하트와 역할, 사용량 막대) · `compact`(쉴 때 한 줄, 작업 중 두 줄) |
+| `bandStyle` | 입력창 위 띠 모양 | `full` | 값을 글자로 적습니다. `full`(색 줄, 멤버별 하트와 역할, 사용량 막대) · `compact`(쉴 때 한 줄, 작업 중 두 줄) |
 | `autoOpen` | 패널 자동 열기 | 켬 | 멤버에게 일이 맡겨지면 패널을 스스로 엶(터미널 폭 144칸 이상일 때). 손으로 닫으면 `/rescene` 전까지 다시 열지 않음 |
-| `theme` | 화면 밝기 | `auto` | `auto`(Claude Code 테마를 따름) · `dark` · `light` |
+| `theme` | 화면 밝기 | `auto` | 값을 글자로 적습니다. `auto`(Claude Code 테마를 따름) · `dark` · `light` |
 | `orcaVoice` | Orca 작업자 말투 | 켬 | `fleet-run` 작업지시 옆에 멤버 말투를 붙인 사본을 만들어 넘김 (Orca를 쓸 때만 해당) |
 | `keepScreen` | Orca 작업자 진행 화면 남기기 | **끔** | 한 단계짜리 `fleet-run` 실행 뒤에 `tee`를 붙여 `<out>.live.log`를 남김. 사용자의 명령을 바꾸는 기능이라 기본은 꺼 둠 |
 
@@ -181,6 +182,32 @@ claude plugin uninstall rescene@rescene
 | 입력창 위 띠가 자리를 많이 차지함 | 설정의 "입력창 위 띠 모양"을 `compact`로, 아예 없애려면 `band`를 끕니다 |
 
 그래도 안 되면 `claude --debug`로 실행해 나오는 `rescene:` 줄을 [이슈](https://github.com/techkwon/rescene/issues)에 붙여 주세요. 개인 정보나 키 값은 지우고 올려 주세요.
+
+## 이 모드가 컴퓨터에서 하는 일
+
+모드는 샌드박스 없이 사용자 권한으로 돕니다. 그래서 무엇을 읽고, 실행하고, 쓰고, 바꾸는지 전부 적어 둡니다. (An English version follows.)
+
+- **외부로 보내는 것**: 없습니다. 네트워크 호출이 없고, 아래의 프로그램 실행도 내 컴퓨터 안에서 화면 글자를 읽어 오는 데만 씁니다.
+- **읽는 것**: 요청의 첫 줄, 도구 호출의 이름과 대상(파일 이름, 명령 첫머리), 서브에이전트 보고의 앞부분, 사용량 숫자, Claude Code의 테마 이름. 모두 그 세션의 패널과 띠에 보여 주는 데만 씁니다. 환경 변수는 `HOME`(명령 속 `~` 경로 풀기)과 `SHELL`(zsh·bash인지 확인) 둘만 읽습니다. 자격 증명이나 키는 읽지 않습니다.
+- **실행하는 프로그램**: 두 가지뿐이고, 둘 다 Orca 연동에서만 씁니다.
+  - `orca terminal read --terminal <핸들> --screen`: 사용자가 Orca 탭으로 띄운 작업자의 화면 글자를 읽습니다. `orca`가 경로에 없으면 `/Applications/Orca.app/Contents/Resources/bin/orca`를 씁니다.
+  - `tail -c 16000 <out>.live.log`: `keepScreen`을 켰을 때 남는 진행 기록이 클 때 끝부분만 읽습니다.
+- **쓰는 파일**: 하나뿐입니다. Orca `fleet-run`을 실행할 때 작업지시 파일 옆에 멤버 말투 지시를 덧붙인 사본 `<이름>.rescene-<멤버>.md`를 만듭니다(다른 AI 작업자가 읽는 지시 파일입니다. 원본은 건드리지 않고, `orcaVoice`를 끄면 만들지 않습니다). 그 밖에 역할 설정을 Claude Code의 플러그인 저장소(`$.store`)에 남깁니다.
+- **바꾸는 것**
+  - 시스템 프롬프트에 "리센느 모드" 절을 하나 붙이고(`prompt.compose`), 받는 멤버나 역할을 바꿨을 때는 그 안내를 요청에 덧붙입니다(`prompt.submit`).
+  - 서브에이전트에게 가는 지시 끝에 멤버 배정 블록을 붙이고(`agent.spawn`), Agent 도구의 결과 뒤에 누가 맡았는지 한 줄을 붙입니다(`tool.call`).
+  - 화면은 스피너 문구, 턴이 끝난 뒤의 한 줄, 입력창 위 띠, 오른쪽 패널을 그립니다(`ui.render`).
+  - Bash 명령은 두 경우에만 바꿉니다. `fleet-run`의 `--spec` 경로를 위의 사본으로 바꾸는 것(`orcaVoice`), 그리고 `keepScreen`을 켰을 때 한 단계짜리 `fleet-run` 뒤에 `tee`를 붙이는 것입니다. 그 밖의 도구 입력은 그대로 넘깁니다.
+  - 권한 판정은 건드리지 않습니다. 도구 호출을 거절하거나 허용하지 않고, 결과만 봅니다. 테마 설정(`config.set`)은 그대로 넘기고 바뀐 뒤의 이름만 읽습니다.
+  - 등록하는 명령은 `/rescene` 하나이고, 도구나 에이전트는 등록하지 않습니다.
+
+### What this mod does on your machine
+
+- **Sends nothing.** There are no network calls. The two programs below are run only to read text back on the same machine.
+- **Reads**: the first line of each prompt, each tool call's name and target, the opening of a subagent's report, usage figures and the name of the Claude Code theme, all to draw the session's own pane and band. Of the environment it reads `HOME` (to resolve `~` in a command) and `SHELL` (to know whether the shell is zsh or bash). It reads no credential or key.
+- **Runs two programs**, both for the optional Orca integration: `orca terminal read --terminal <handle> --screen` (or `/Applications/Orca.app/Contents/Resources/bin/orca` when `orca` is not on the path) to read the screen of a worker tab the person opened, and `tail -c 16000 <out>.live.log` to read the end of a long progress log kept when `keepScreen` is on.
+- **Writes one kind of file**: beside an Orca `fleet-run` spec, a copy named `<name>.rescene-<member>.md` with the member's voice instructions appended, which the worker reads as its instructions. The original is left alone, and nothing is written with `orcaVoice` off. The role settings are kept in the plugin store.
+- **Changes**: it adds one section to the system prompt (`prompt.compose`), adds a note to a prompt when the person has picked a member or changed roles (`prompt.submit`), appends a member block to a subagent's prompt (`agent.spawn`), and adds one line naming the member to an Agent tool result (`tool.call`). It draws the spinner text, the line after a turn, the band above the prompt and its own pane (`ui.render`). It rewrites a Bash command in two cases only: the `--spec` path of a `fleet-run` is pointed at the copy above, and with `keepScreen` on a one-step `fleet-run` is piped through `tee`. It takes no permission decision: it never allows or denies a tool call, and it passes a theme setting (`config.set`) on unchanged. It registers one command, `/rescene`, and no tools or agents.
 
 ## AI에게 설치와 사용을 맡기려면
 
@@ -226,6 +253,7 @@ claude plugin test .
 |---|---|
 | `.claude-plugin/plugin.json` | 이름, 버전, 설정 항목 |
 | `.claude-plugin/marketplace.json` | 이 저장소를 설치 주소로 쓰게 하는 파일 |
+| `.claude-plugin/icon.png` | 목록에 쓰는 아이콘(직접 그린 픽셀 그림) |
 | `hooks/register.tsx` | 훅 전체(배정, 말투 지시, 명령, 사용량, Orca 연동) |
 | `hooks/view.tsx` | 패널, 띠, 백스테이지, 역할 설정 화면 |
 | `hooks/members.ts` · `voice.ts` · `action.ts` · `orca.ts` · `sprites.ts` | 멤버와 대사, 말투 글, 도구별 문구, 셸 명령 읽기, 픽셀 아이콘 |

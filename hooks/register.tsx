@@ -500,7 +500,7 @@ let isLightDrawn = false
 /** The beat each member hops until, for a task of hers that ended well. */
 const cheers: { [id in MemberId]?: number } = {}
 
-const step = async ($: Engine): Promise<void> => {
+const stepIcons = async ($: Engine): Promise<void> => {
   beat += 1
   const cheering = ORDER.filter(id => (cheers[id] ?? 0) > beat)
   const now = isStaged ? iconed.filter(id => moving.includes(id) || cheering.includes(id)) : []
@@ -529,7 +529,7 @@ const step = async ($: Engine): Promise<void> => {
 /** Starts the beat the icons move to; it stops by itself once nobody has moved for a while. */
 const dance = ($: Engine): void => {
   restBeats = 0
-  dancer ??= $.clock.every(FRAME_MS, () => void step($).catch(() => undefined))
+  dancer ??= $.clock.every(FRAME_MS, () => void stepIcons($).catch(() => undefined))
 }
 
 let isTicking = false
@@ -578,6 +578,9 @@ const readTheme = async ($: Engine, named?: unknown): Promise<void> => {
 
   if (light !== (await read($, isLight))) await update($, isLight, () => light)
 }
+
+/** How long after the theme is set its name is read back. */
+const THEME_MS = 200
 
 const ORCA = ['orca', '/Applications/Orca.app/Contents/Resources/bin/orca'] as const
 /** The `orca` that started, once one has. */
@@ -1175,14 +1178,12 @@ export const register: Register = (on, options) => {
     return compacted
   }).catch(($, e, next) => next(e))
 
-  // The person changes the theme: the colors follow at once.
-  on('config.set', { key: 'theme' }, async ($, e, next) => {
-    const set = await next(e)
+  // The person changes the theme: the colors follow once it is set. The setting is passed on as it came.
+  on('config.set', { key: 'theme' }, ($, e, next) => {
+    $.clock.after(THEME_MS, () => void readTheme($).catch(() => undefined))
 
-    if (set.deny === undefined) await readTheme($, set.value).catch(() => undefined)
-
-    return set
-  })
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   // The session's figures as the engine measures them: after a turn, and when a limit moves a point.
   on('session.measure', async ($, e, next) => {

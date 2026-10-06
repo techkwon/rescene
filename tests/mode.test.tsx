@@ -608,7 +608,7 @@ test('the band names who takes the next prompt: a press picks her, and the promp
 })
 
 test("on a light theme the members' colors are drawn deeper, and a change of theme is followed", async ($, on) => {
-  mock.clock(on, { now: 1000 })
+  const clock = mock.clock(on, { now: 1000 })
   let theme = 'light'
 
   on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', kind: 'choice' as const, value: theme, provider: { plugin: 'core', tier: 'core' as const }, isLocked: false }] }))
@@ -630,6 +630,7 @@ test("on a light theme the members' colors are drawn deeper, and a change of the
   const pale = await icon()
 
   await $.config.set({ key: 'theme', value: 'dark', previous: 'light', provider: { plugin: 'core', tier: 'core' }, origin: { kind: 'composer' } })
+  await clock.advance(300)
   expect(await border()).toBe('#ecd25b')
   expect(await icon()).not.toBe(pale)
   await pane.unmount()
