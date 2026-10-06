@@ -133,7 +133,7 @@ claude plugin uninstall rescene@rescene
 - **조합 이름**: 한 명이 일하면 원이와의 조합(우아즈, 원나미, 쪼물딱즈, 맏막즈), 둘 이상이면 그 조합(06즈, 리트와 메트, 메미즈, 막내즈 등)이 `지금 무대: …`로 뜹니다. 원이 혼자 일할 때는 `원이 싱글코어 가동 중`입니다.
 - **순간 대사**: 그런 순간이 오면 한 번 나옵니다. 한도 80%에 메이 “전 총량의 법칙을 믿습니다.”, 95%에 원이 “그냥 굶어라.”, 컨텍스트 80%에 메이 “이게 과유불급이에요.”, 대화 요약 직후 원이 “누구게?”, 작업 4개가 한꺼번에 돌면 메이 “여러분 여러분! 너무 시끄러워요!”, 같은 파일을 한 턴에 5번 읽으면 원이 “와 이래 많이 봅니까, 우리? 그만 좀 봅시다.”, 제나의 일이 3분을 넘기면 원이 “너 김가영이야?”
 - **명대사 월드컵**: 이 세션에서 가장 많이 나온 대사가 무대 로그 위에 1위로 뜹니다. 전체 순위는 `/rescene cup`.
-- **밝은 화면·어두운 화면**: Claude Code 테마 이름에 `light`가 들어 있으면 밝은 배경에서 읽히는 진한 색으로 그립니다. 맞지 않으면 설정의 "화면 밝기"를 `light`나 `dark`로 고정하세요.
+- **밝은 화면·어두운 화면**: Claude Code 테마 이름에 `light`가 들어 있으면 밝은 배경에서 읽히는 진한 색으로 그립니다. 테마를 바꾸면 다음 요청부터 따라갑니다. 맞지 않으면 설정의 "화면 밝기"를 `light`나 `dark`로 고정하세요.
 
 ## 명령
 
@@ -198,7 +198,7 @@ claude plugin uninstall rescene@rescene
   - 서브에이전트에게 가는 지시 끝에 멤버 배정 블록을 붙이고(`agent.spawn`), Agent 도구의 결과 뒤에 누가 맡았는지 한 줄을 붙입니다(`tool.call`).
   - 화면은 스피너 문구, 턴이 끝난 뒤의 한 줄, 입력창 위 띠, 오른쪽 패널을 그립니다(`ui.render`).
   - Bash 명령은 두 경우에만 바꿉니다. `fleet-run`의 `--spec` 경로를 위의 사본으로 바꾸는 것(`orcaVoice`), 그리고 `keepScreen`을 켰을 때 한 단계짜리 `fleet-run` 뒤에 `tee`를 붙이는 것입니다. 그 밖의 도구 입력은 그대로 넘깁니다.
-  - 권한 판정은 건드리지 않습니다. 도구 호출을 거절하거나 허용하지 않고, 결과만 봅니다. 테마 설정(`config.set`)은 그대로 넘기고 바뀐 뒤의 이름만 읽습니다.
+  - 권한 판정은 건드리지 않습니다. 도구 호출을 거절하거나 허용하지 않고, 결과만 봅니다. 설정이 바뀌는 것을 가로채는 훅도 없습니다(테마 이름은 요청을 보낼 때 읽습니다).
   - 등록하는 명령은 `/rescene` 하나이고, 도구나 에이전트는 등록하지 않습니다.
 
 ### What this mod does on your machine
@@ -207,7 +207,7 @@ claude plugin uninstall rescene@rescene
 - **Reads**: the first line of each prompt, each tool call's name and target, the opening of a subagent's report, usage figures and the name of the Claude Code theme, all to draw the session's own pane and band. Of the environment it reads `HOME` (to resolve `~` in a command) and `SHELL` (to know whether the shell is zsh or bash). It reads no credential or key.
 - **Runs two programs**, both for the optional Orca integration: `orca terminal read --terminal <handle> --screen` (or `/Applications/Orca.app/Contents/Resources/bin/orca` when `orca` is not on the path) to read the screen of a worker tab the person opened, and `tail -c 16000 <out>.live.log` to read the end of a long progress log kept when `keepScreen` is on.
 - **Writes one kind of file**: beside an Orca `fleet-run` spec, a copy named `<name>.rescene-<member>.md` with the member's voice instructions appended, which the worker reads as its instructions. The original is left alone, and nothing is written with `orcaVoice` off. The role settings are kept in the plugin store.
-- **Changes**: it adds one section to the system prompt (`prompt.compose`), adds a note to a prompt when the person has picked a member or changed roles (`prompt.submit`), appends a member block to a subagent's prompt (`agent.spawn`), and adds one line naming the member to an Agent tool result (`tool.call`). It draws the spinner text, the line after a turn, the band above the prompt and its own pane (`ui.render`). It rewrites a Bash command in two cases only: the `--spec` path of a `fleet-run` is pointed at the copy above, and with `keepScreen` on a one-step `fleet-run` is piped through `tee`. It takes no permission decision: it never allows or denies a tool call, and it passes a theme setting (`config.set`) on unchanged. It registers one command, `/rescene`, and no tools or agents.
+- **Changes**: it adds one section to the system prompt (`prompt.compose`), adds a note to a prompt when the person has picked a member or changed roles (`prompt.submit`), appends a member block to a subagent's prompt (`agent.spawn`), and adds one line naming the member to an Agent tool result (`tool.call`). It draws the spinner text, the line after a turn, the band above the prompt and its own pane (`ui.render`). It rewrites a Bash command in two cases only: the `--spec` path of a `fleet-run` is pointed at the copy above, and with `keepScreen` on a one-step `fleet-run` is piped through `tee`. It takes no permission decision: it never allows or denies a tool call, and it hooks no setting as it is made (the theme's name is read when a prompt is sent). It registers one command, `/rescene`, and no tools or agents.
 
 ## AI에게 설치와 사용을 맡기려면
 
@@ -253,7 +253,6 @@ claude plugin test .
 |---|---|
 | `.claude-plugin/plugin.json` | 이름, 버전, 설정 항목 |
 | `.claude-plugin/marketplace.json` | 이 저장소를 설치 주소로 쓰게 하는 파일 |
-| `.claude-plugin/icon.png` | 목록에 쓰는 아이콘(직접 그린 픽셀 그림) |
 | `hooks/register.tsx` | 훅 전체(배정, 말투 지시, 명령, 사용량, Orca 연동) |
 | `hooks/view.tsx` | 패널, 띠, 백스테이지, 역할 설정 화면 |
 | `hooks/members.ts` · `voice.ts` · `action.ts` · `orca.ts` · `sprites.ts` | 멤버와 대사, 말투 글, 도구별 문구, 셸 명령 읽기, 픽셀 아이콘 |

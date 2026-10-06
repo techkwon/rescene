@@ -579,9 +579,6 @@ const readTheme = async ($: Engine, named?: unknown): Promise<void> => {
   if (light !== (await read($, isLight))) await update($, isLight, () => light)
 }
 
-/** How long after the theme is set its name is read back. */
-const THEME_MS = 200
-
 const ORCA = ['orca', '/Applications/Orca.app/Contents/Resources/bin/orca'] as const
 /** The `orca` that started, once one has. */
 let orcaAt: string | undefined
@@ -978,6 +975,8 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'rescene' }, async ($, e) => {
     const asked = e.args.trim().toLowerCase()
 
+    await readTheme($).catch(() => undefined)
+
     if (asked === 'on' || asked === 'off') {
       await update($, isOn, () => asked === 'on')
       isLit = asked === 'on'
@@ -1117,6 +1116,8 @@ export const register: Register = (on, options) => {
   // again after a compaction took that away.
   on('prompt.submit', async ($, e, next) => {
     if (!TYPED.has(e.origin.kind)) return next(e)
+    // A theme changed since the last prompt is followed from this one: no setting is watched as it is made.
+    await readTheme($).catch(() => undefined)
     const briefing = await read($, briefed)
     const isModeOn = await read($, isOn)
     const said = e.text.trimStart().startsWith('/') ? '' : askOf(e.text)
@@ -1176,13 +1177,6 @@ export const register: Register = (on, options) => {
     }
 
     return compacted
-  }).catch(($, e, next) => next(e))
-
-  // The person changes the theme: the colors follow once it is set. The setting is passed on as it came.
-  on('config.set', { key: 'theme' }, ($, e, next) => {
-    $.clock.after(THEME_MS, () => void readTheme($).catch(() => undefined))
-
-    return next(e)
   }).catch(($, e, next) => next(e))
 
   // The session's figures as the engine measures them: after a turn, and when a limit moves a point.

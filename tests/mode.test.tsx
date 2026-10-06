@@ -607,8 +607,8 @@ test('the band names who takes the next prompt: a press picks her, and the promp
   await band.unmount()
 })
 
-test("on a light theme the members' colors are drawn deeper, and a change of theme is followed", async ($, on) => {
-  const clock = mock.clock(on, { now: 1000 })
+test("on a light theme the members' colors are drawn deeper, and a change of theme is followed from the next prompt", async ($, on) => {
+  mock.clock(on, { now: 1000 })
   let theme = 'light'
 
   on('config.list', () => ({ value: [{ key: 'theme', label: 'Theme', kind: 'choice' as const, value: theme, provider: { plugin: 'core', tier: 'core' as const }, isLocked: false }] }))
@@ -618,6 +618,8 @@ test("on a light theme the members' colors are drawn deeper, and a change of the
     return { value: e.value }
   })
   on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('prompt.submit', ($, e) => ({ text: e.text }))
+  on('ui.toast', () => ({ value: undefined }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
 
   await $.session.start({ cwd: '/w', surface: 'terminal', isInteractive: true })
@@ -630,7 +632,7 @@ test("on a light theme the members' colors are drawn deeper, and a change of the
   const pale = await icon()
 
   await $.config.set({ key: 'theme', value: 'dark', previous: 'light', provider: { plugin: 'core', tier: 'core' }, origin: { kind: 'composer' } })
-  await clock.advance(300)
+  await $.prompt.submit({ text: '다음 일', wait: false, origin: { kind: 'composer' } })
   expect(await border()).toBe('#ecd25b')
   expect(await icon()).not.toBe(pale)
   await pane.unmount()
