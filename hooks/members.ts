@@ -2,6 +2,8 @@ import type { Color } from 'claude-code'
 
 import type { Cast, MemberId, Role, Task } from '../types'
 
+import { t } from './lang'
+
 // Facts from the fan wiki (namu.wiki, read 2026-10-06) and the official
 // remini goods pages: colors, hearts, animals. Every quote below is a line
 // the member is recorded as having said; none is made up here.
@@ -9,6 +11,8 @@ import type { Cast, MemberId, Role, Task } from '../types'
 export type Member = {
   id: MemberId
   name: string
+  /** Her name as the group writes it in Latin letters. */
+  en: string
   /** Her heart in plain text: the emoji, or for 리브 the suit, which shows on a dark terminal. */
   heart: string
   remini: string
@@ -36,6 +40,7 @@ export const MEMBERS: Record<MemberId, Member> = {
   woni: {
     id: 'woni',
     name: '원이',
+    en: 'WONI',
     heart: '💚',
     remini: '조타',
     title: '대장',
@@ -47,6 +52,7 @@ export const MEMBERS: Record<MemberId, Member> = {
   liv: {
     id: 'liv',
     name: '리브',
+    en: 'LIV',
     heart: '♥',
     remini: '리뿌',
     title: '최종병기',
@@ -58,6 +64,7 @@ export const MEMBERS: Record<MemberId, Member> = {
   minami: {
     id: 'minami',
     name: '미나미',
+    en: 'MINAMI',
     heart: '💙',
     remini: '밍',
     title: '올라운더',
@@ -69,6 +76,7 @@ export const MEMBERS: Record<MemberId, Member> = {
   may: {
     id: 'may',
     name: '메이',
+    en: 'MAY',
     heart: '💛',
     remini: '얌',
     title: '메기자',
@@ -80,6 +88,7 @@ export const MEMBERS: Record<MemberId, Member> = {
   zena: {
     id: 'zena',
     name: '제나',
+    en: 'ZENA',
     heart: '💜',
     remini: '쩨로밍',
     title: '신라공주',
@@ -89,6 +98,9 @@ export const MEMBERS: Record<MemberId, Member> = {
     lineOnLight: '#7a4bb0',
   },
 }
+
+/** A member's name in the language in use. */
+export const nameOf = (id: MemberId): string => t(MEMBERS[id].name, MEMBERS[id].en)
 
 export const ORDER: readonly MemberId[] = ['woni', 'liv', 'minami', 'may', 'zena']
 export const WORKERS: readonly MemberId[] = ['liv', 'minami', 'may', 'zena']
@@ -196,7 +208,7 @@ export const say = (member: MemberId, situation: Situation, turn: number, role: 
 export const SPOKEN: readonly string[] = [...Object.values(QUOTES).flatMap(by => Object.values(by).flat()), ...Object.values(LEADS).flat()]
 
 /** Every line a member's voice may use, for the instruction blocks. */
-export const LINES: Record<MemberId, readonly string[]> = {
+const LINES_KO: Record<MemberId, readonly string[]> = {
   woni: [
     '"우이!" (추임새, 인사, 뭔가 해냈을 때)',
     '"오이쉬!" / "오이쉬에~" (결과가 마음에 들 때, 맛있을 때)',
@@ -260,13 +272,95 @@ export const LINES: Record<MemberId, readonly string[]> = {
   ],
 }
 
-export const MANNER: Record<MemberId, string> = {
+const MANNER_KO: Record<MemberId, string> = {
   woni: '시원시원한 존댓말. 경상도 억양의 어미("…합니까?", "…합시다")를 가끔 섞는다. 리더답게 정리해서 말한다.',
   liv: '장난기 많은 존댓말. 개그 욕심이 있어 한마디씩 얹지만, 남의 실수는 정확하게 짚는다.',
   minami: '예의 바르고 차분한 존댓말. 신날 때만 갸루 감탄사가 튀어나온다.',
   may: '조곤조곤한 존댓말. 말이 길어지기 쉬운 걸 스스로 알아서 "집쭝!" 하고 간결하게 줄인다.',
   zena: '낯가리는 막내의 존댓말에 경상도 사투리("내는…", "…아이가?")가 섞인다. 억울할 때 리액션이 크다.',
 }
+
+// The same lines for an English reader: each quoted in Korean as she said it, with when it fits.
+const LINES_EN: Record<MemberId, readonly string[]> = {
+  woni: [
+    '"우이!" (her cheer: a greeting, or when something is done)',
+    '"오이쉬!" / "오이쉬에~" (when a result pleases her; "tasty!")',
+    '"안녕하세요, 원이입니다. 잘 부탁드립니다." (her first greeting: "Hello, I\'m WONI. Please take care of me.")',
+    '"밥은 줍니까?" (before taking on work, like a foreman: "Do we get fed?")',
+    '"그냥 굶어라." (when a limit or a resource has run out: "Then just starve.")',
+    '"와 이래 많이 봅니까, 우리? 그만 좀 봅시다." (on seeing the same thing yet again, fondly: "Why do we meet this often? Let\'s stop.")',
+    '"우리 1등하고 싶었잖아." (when everyone finished well: "We wanted first place, didn\'t we.")',
+    '"죠또 코와이... 다이죠부?" (when there is trouble: "A bit scary... all right?")',
+    '"미음" (the members\' own slang for "we\'re done for", when something goes wrong)',
+    '"누구게?" (playfully, after forgetting or meeting again: "Guess who?")',
+    '"너 김가영이야?" (when someone is slow; 가영 is ZENA\'s given name)',
+    '"사실 그냥 지나갈 수 있는 하루를, 저에게 써 주셔서 감사합니다." (closing a long piece of work: "Thank you for spending on me a day that could have just passed by.")',
+  ],
+  liv: [
+    '"너도? 아 나도!" (taking a task, agreeing: "You too? Oh, me too!")',
+    '"허우 유레카!" (on finding the problem: "Eureka!")',
+    '"저의 개인기 필살기... 왕따봉!" (on producing the decisive thing: "My special move... a big thumbs-up!")',
+    '"야 곧 기다려. 나 후반부야." / "난 후반전에 가면 무조건 다 이겨" (when it takes long: "Wait, I\'m a second-half player.")',
+    '"리브 바보 아니다." / "아니, 저 바보 아니에요! 바보 아니야." (owning a slip, or having been right after all: "LIV is no fool.")',
+    '"도대체 어떻게 하면 바보가 아닐 수 있지?" (thinking hard after a failure)',
+    '"감사 한 입, 감사 두 입." (when it ended well: "One bite of thanks, two bites of thanks.")',
+    '"너 진짜 혼나볼래?" (on finding wrong code: "Do you want a scolding?")',
+    '"음 ㅇ오이시.." (after a joke that did not land)',
+    '"망했또띠" (a twist on the members\' slang "미음", when something goes wrong)',
+  ],
+  minami: [
+    '"쿄 아손데콩!" (starting: "Let\'s play today!")',
+    '"거제 야호-!" (finishing: "Geoje, yahoo!")',
+    '"쵸베리구" (very good) / "쵸베리바" (very bad)',
+    '"마지다루이." (when it is a bother or takes long)',
+    '"텐샤이샹데슈~!" (when it went well: "I\'m a genius!")',
+    '"1분만..." (needing a little more time: "Just one minute...")',
+    '"밤양갱! 공룡!" (showing off something hard that she pulled off)',
+    '"미으무야~" (a twist on the members\' slang "미음", when something goes wrong)',
+    'When she has to address the person, she says "피디니무" (PD-nim, the producer).',
+  ],
+  may: [
+    '"기회는 그립감이 좋다." (taking or finishing a task: "A chance has a good grip.")',
+    '"그럼 출발!" (starting: "Then off we go!")',
+    '"집쭝!" (to focus, or when things got scattered: "Focus!")',
+    '"과해." / "이게 과유불급이에요." (when there is too much: "Too much is as bad as too little.")',
+    '"역병처럼 돌아요." (when one problem has spread to many places: "It goes round like a plague.")',
+    '"불협도 화음이니까." (accepting a result that is off: "Dissonance is harmony too.")',
+    '"전 총량의 법칙을 믿습니다." (when it did not go well: "I believe things even out.")',
+    '"아니 왜 시간이 없어요 왜" (pressed for time: "Why is there no time, why")',
+    '"PD님 짱이다." (when helped: "The PD is the best.")',
+    '"미음" (the members\' own slang for "we\'re done for")',
+  ],
+  zena: [
+    '"아뉘이이이!" (wronged, or on failing: "Nooooo!")',
+    '"그게 뭔데요?" (meeting something she does not know: "What is that?")',
+    '"아, 그뤠여?" / "아, 진쫘여?" (coming round late: "Oh, is that so?")',
+    '"내는 원래 ○○을 싸랑해." (she fills ○○ with what she likes: "I have always loved ○○.")',
+    '"무엄하다!" (when refused: "How insolent!")',
+    '"제가 해명할 게 뭐가 있죠?" (told off unfairly: "What is there for me to explain?")',
+    '"나쁜 일이 일어나면 그만큼 좋은 일도 일어난다." (after failing, her motto: "For every bad thing a good one comes.")',
+    '"십원빵 아이가?" (on finding something welcome)',
+    '"안녕하신교?" (a greeting, in her dialect)',
+    '"망해또르띠아" (a twist on the members\' slang "미음", when something goes wrong)',
+  ],
+}
+
+const MANNER_EN: Record<MemberId, string> = {
+  woni: 'Brisk and polite, a leader who sums things up and decides. (In Korean she has a Gyeongsang lilt; in another language, plain and decisive.)',
+  liv: 'Playful but polite. She likes to slip in a joke, and she names another\'s mistake exactly.',
+  minami: 'Courteous and calm. Her gyaru exclamations come out only when she is excited.',
+  may: 'Soft-spoken and polite. She knows she runs long, so she tells herself "집쭝!" and keeps it short.',
+  zena: 'The shy youngest, polite, with a Gyeongsang dialect in Korean. Her reactions are big when she feels wronged.',
+}
+
+/** Every line a member's voice may use, for the instruction blocks, in the language in use. */
+export const linesFor = (id: MemberId): readonly string[] => t(LINES_KO, LINES_EN)[id]
+
+/** The Korean lines, for checking each against the record. */
+export const LINES = LINES_KO
+
+/** How a member speaks, in the language in use. */
+export const mannerOf = (id: MemberId): string => t(MANNER_KO, MANNER_EN)[id]
 
 // Unit names from the fan wiki's chemistry table: the first the one a
 // pair is known by, the rest what it also goes by. 원이 conducts every
@@ -304,8 +398,16 @@ export const ROLES: readonly WorkRole[] = ['구현', '검토', '조사', '탐색
 /** Who has which kind of work until the person says otherwise: each member's own position. */
 export const CAST: Cast = { 구현: 'minami', 검토: 'liv', 조사: 'may', 탐색: 'zena' }
 
+const DUTY_KO: Record<WorkRole, string> = { 구현: '구현, 수정', 검토: '검토, 검증, 테스트', 조사: '조사, 문서, 정리', 탐색: '코드 탐색, 위치 찾기, 심부름' }
+const DUTY_EN: Record<WorkRole, string> = { 구현: 'building, fixing', 검토: 'review, verification, tests', 조사: 'research, documents, write-ups', 탐색: 'exploring code, locating things, errands' }
+
 /** What each kind of work takes in, in a few words. */
-export const DUTY: Record<WorkRole, string> = { 구현: '구현, 수정', 검토: '검토, 검증, 테스트', 조사: '조사, 문서, 정리', 탐색: '코드 탐색, 위치 찾기, 심부름' }
+export const dutyOf = (role: WorkRole): string => t(DUTY_KO, DUTY_EN)[role]
+
+const ROLE_EN: Record<Role, string> = { 지휘: 'lead', 구현: 'build', 검토: 'review', 조사: 'research', 탐색: 'scout' }
+
+/** A kind of work by its name in the language in use; in the code and the state it goes by its Korean name. */
+export const roleName = (role: Role): string => t(role, ROLE_EN[role])
 
 /** A member's kind of work: 원이 conducts, and each of the four has the one the cast gives her. */
 export const roleIn = (cast: Cast, id: MemberId): Role => (id === 'woni' ? '지휘' : (ROLES.find(role => cast[role] === id) ?? '구현'))

@@ -1,7 +1,7 @@
 {
   "name": "rescene",
-  "version": "0.8.1",
-  "description": "리센느 모드: 원이가 지휘하고 리브·미나미·메이·제나가 작업을 맡아 보고한다 (Claude 서브에이전트 + Orca 작업자)",
+  "version": "0.9.0",
+  "description": "RESCENE fan mod: WONI conducts while LIV, MINAMI, MAY and ZENA take the subagent and Orca worker tasks and report back, in Korean or English. 리센느 팬 모드: 원이가 지휘하고 리브·미나미·메이·제나가 작업을 맡아 보고한다.",
   "author": {
     "name": "techkwon"
   },
@@ -14,56 +14,64 @@
     "orchestration",
     "usage",
     "korean",
+    "english",
+    "k-pop",
     "fan-made"
   ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "leaderVoice": {
       "type": "boolean",
-      "title": "원이 말투",
-      "description": "주 세션이 리더 원이 말투로 말한다",
+      "title": "원이 말투 / WONI's voice",
+      "description": "주 세션이 리더 원이 말투로 말한다 / The main session speaks as WONI, the leader",
       "default": true
     },
     "memberVoice": {
       "type": "boolean",
-      "title": "멤버 말투",
-      "description": "서브에이전트가 배정된 멤버 말투로 보고한다",
+      "title": "멤버 말투 / Members' voice",
+      "description": "서브에이전트가 배정된 멤버 말투로 보고한다 / A subagent reports in the voice of the member it was cast as",
       "default": true
     },
     "orcaVoice": {
       "type": "boolean",
-      "title": "Orca 작업자 말투",
-      "description": "fleet-run 작업지시 옆에 멤버 말투를 붙인 사본을 만들어 넘긴다",
+      "title": "Orca 작업자 말투 / Orca workers' voice",
+      "description": "fleet-run 작업지시 옆에 멤버 말투를 붙인 사본을 만들어 넘긴다 / Hands a fleet-run worker a copy of its spec, written beside the spec, with the member's voice block at its end",
       "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "언어 / Language",
+      "description": "auto, ko, en 가운데 하나를 적는다. auto(기본)는 한국어 사용자에게 한국어, 그 밖에는 영어로 보여 준다. 세션 안에서는 /rescene lang 으로 바꾼다 / Write auto, ko or en. auto (default) is Korean for a Korean reader and English for anyone else. Within a session, /rescene lang changes it",
+      "default": "auto"
     },
     "keepScreen": {
       "type": "boolean",
-      "title": "Orca 작업자 진행 화면 남기기",
-      "description": "명령이 fleet-run 하나뿐일 때 그 뒤에 tee 를 붙여 진행 화면을 <결과>.live.log 에 남긴다 (명령을 바꾸므로 기본은 꺼짐. Orca 탭으로 띄운 작업자는 이 설정 없이도 화면이 보인다)",
+      "title": "Orca 작업자 진행 화면 남기기 / Keep an Orca worker's screen",
+      "description": "명령이 fleet-run 하나뿐일 때 그 뒤에 tee 를 붙여 진행 화면을 <결과>.live.log 에 남긴다 (명령을 바꾸므로 기본은 꺼짐. Orca 탭으로 띄운 작업자는 이 설정 없이도 화면이 보인다) / When a command is one fleet-run and nothing else, adds a tee after it so the screen is kept in <result>.live.log (off by default, as it changes the command; a worker launched in an Orca tab shows its screen without this)",
       "default": false
     },
     "band": {
       "type": "boolean",
-      "title": "입력창 위 현황 띠",
-      "description": "입력창 위에 받는 멤버 고르기와 사용량, 작업 중에는 멤버 현황을 보여 준다",
+      "title": "입력창 위 현황 띠 / Band above the prompt",
+      "description": "입력창 위에 받는 멤버 고르기와 사용량, 작업 중에는 멤버 현황을 보여 준다 / Shows above the prompt who takes the next prompt and the usage, and the members at work while there is work",
       "default": true
     },
     "bandStyle": {
       "type": "string",
-      "title": "입력창 위 띠 모양",
-      "description": "full 또는 compact 를 적는다. full(기본)은 색 줄, 멤버별 하트와 역할, 사용량 막대를 여러 줄로 크게 보여 준다. compact 는 쉴 때 한 줄, 작업 중 두 줄로 줄인다",
+      "title": "입력창 위 띠 모양 / Shape of the band",
+      "description": "full 또는 compact 를 적는다. full(기본)은 색 줄, 멤버별 하트와 역할, 사용량 막대를 여러 줄로 크게 보여 준다. compact 는 쉴 때 한 줄, 작업 중 두 줄로 줄인다 / Write full or compact. full (default) is several rows: a color rule, each member with her heart and role, usage bars. compact is one row at rest and two at work",
       "default": "full"
     },
     "autoOpen": {
       "type": "boolean",
-      "title": "패널 자동 열기",
-      "description": "멤버에게 일이 맡겨지면 현황 패널을 스스로 연다 (손으로 닫으면 /rescene 전까지 다시 열지 않는다)",
+      "title": "패널 자동 열기 / Open the panel by itself",
+      "description": "멤버에게 일이 맡겨지면 현황 패널을 스스로 연다 (손으로 닫으면 /rescene 전까지 다시 열지 않는다) / Opens the members panel when work is handed to a member (closed by hand, it stays closed until /rescene)",
       "default": true
     },
     "theme": {
       "type": "string",
-      "title": "화면 밝기",
-      "description": "auto, dark, light 가운데 하나를 적는다. 멤버 색과 아이콘을 어두운 화면용·밝은 화면용 가운데 무엇으로 그릴지 정한다. auto(기본)는 Claude Code 테마 이름을 따른다",
+      "title": "화면 밝기 / Screen brightness",
+      "description": "auto, dark, light 가운데 하나를 적는다. 멤버 색과 아이콘을 어두운 화면용·밝은 화면용 가운데 무엇으로 그릴지 정한다. auto(기본)는 Claude Code 테마 이름을 따른다 / Write auto, dark or light: which colors and icons to draw, for a dark screen or a light one. auto (default) follows the name of Claude Code's theme",
       "default": "auto"
     }
   }

@@ -3,7 +3,8 @@ import type { Color, Elements, RenderElement } from 'claude-code'
 import type { Cast, Line, Live, MemberId, Peek, Said, Step, Task, Tokens, Turn, Usage } from '../types'
 
 import type { WorkRole } from './members'
-import { CAST, DUTY, isActive, isSameCast, LEADER, lineOf, MEMBERS, ORDER, PINK, pinkOf, roleIn, ROLES, say, unitOf, WORKERS } from './members'
+import { langNow, t } from './lang'
+import { CAST, dutyOf, isActive, isSameCast, LEADER, lineOf, MEMBERS, nameOf, ORDER, PINK, pinkOf, roleIn, roleName, ROLES, say, unitOf, WORKERS } from './members'
 import { frameOf, ICON_COLUMNS, ICON_ROWS, iconOf, LOGO, logoOf } from './sprites'
 
 /** The elements a drawing is made of, and whether the terminal's theme is a light one. */
@@ -58,7 +59,9 @@ export type Band = {
 export type Room = { columns: number; rows: number }
 
 const MARK: Record<Task['status'], string> = { running: '●', waiting: '◐', done: '✓', failed: '✗' }
-const WORD: Record<Task['status'], string> = { running: '작업 중', waiting: '기다리는 중', done: '끝', failed: '실패' }
+const WORD_KO: Record<Task['status'], string> = { running: '작업 중', waiting: '기다리는 중', done: '끝', failed: '실패' }
+const WORD_EN: Record<Task['status'], string> = { running: 'working', waiting: 'waiting', done: 'done', failed: 'failed' }
+const wordOf = (status: Task['status']): string => t(WORD_KO, WORD_EN)[status]
 const TINT: Record<Task['status'], Color | undefined> = {
   running: undefined,
   waiting: 'warning',
@@ -132,7 +135,7 @@ export const spoken = (ms: number): string => {
   const seconds = Math.max(0, Math.round(ms / 1000))
   const minutes = Math.floor(seconds / 60)
 
-  return minutes === 0 ? `${seconds}초` : `${minutes}분 ${seconds % 60}초`
+  return minutes === 0 ? t(`${seconds}초`, `${seconds}s`) : t(`${minutes}분 ${seconds % 60}초`, `${minutes}m ${seconds % 60}s`)
 }
 
 export const elapsed = (task: Task, now: number): number => (task.endedAt ?? Math.max(now, task.startedAt)) - task.startedAt
@@ -153,7 +156,7 @@ const latest = (scene: Scene): Said | null => {
 
 const Badge = ({ Text }: Kit, id: MemberId): RenderElement => (
   <Text backgroundColor={MEMBERS[id].color} color={MEMBERS[id].ink} bold>
-    {` ${MEMBERS[id].name} `}
+    {` ${nameOf(id)} `}
   </Text>
 )
 
@@ -161,10 +164,17 @@ const Heart = ({ Text, isLight }: Kit, id: MemberId): RenderElement => <Text col
 
 // ---- usage
 
-/** A token count the way a Korean reader says it: 4.6천, 17.1만, 1.2억. */
+/** A token count the way its reader says it: 4.6천, 17.1만, 1.2억 in Korean; 4.6k, 171k, 120M in English. */
 export const amount = (tokens: number): string => {
   const short = (value: number): string => (value >= 100 ? String(Math.round(value)) : String(Math.round(value * 10) / 10))
 
+  if (langNow() === 'en') {
+    // A figure that would round up to a thousand of its unit is said in the next one.
+    if (tokens >= 999_500_000) return `${short(tokens / 1_000_000_000)}B`
+    if (tokens >= 999_500) return `${short(tokens / 1_000_000)}M`
+
+    return tokens >= 1_000 ? `${short(tokens / 1_000)}k` : String(Math.round(tokens))
+  }
   if (tokens >= 100_000_000) return `${short(tokens / 100_000_000)}억`
   if (tokens >= 10_000) return `${short(tokens / 10_000)}만`
   if (tokens >= 1_000) return `${short(tokens / 1_000)}천`
@@ -184,7 +194,7 @@ export const plus = (a: Tokens, b: Tokens | undefined): Tokens => {
 export const spent = (tokens: Tokens): string => {
   const cost = tokens.usd === undefined ? '' : ` · $${tokens.usd.toFixed(2)}`
 
-  return `입력 ${amount(tokens.fresh)} · 캐시 ${amount(tokens.cached)} · 출력 ${amount(tokens.out)}${cost}`
+  return t(`입력 ${amount(tokens.fresh)} · 캐시 ${amount(tokens.cached)} · 출력 ${amount(tokens.out)}${cost}`, `in ${amount(tokens.fresh)} · cache ${amount(tokens.cached)} · out ${amount(tokens.out)}${cost}`)
 }
 
 const SPENT = new WeakMap<Scene, Record<MemberId, Tokens>>()
@@ -210,15 +220,18 @@ export const spentBy = (scene: Scene): Record<MemberId, Tokens> => {
 
 const isSpent = (tokens: Tokens): boolean => tokens.fresh + tokens.cached + tokens.out > 0 || tokens.usd !== undefined
 
-const LIMIT: Record<string, string> = { five_hour: '5시간', seven_day: '7일', spend_limit: '지출' }
+const LIMIT_KO: Record<string, string> = { five_hour: '5시간', seven_day: '7일', spend_limit: '지출' }
+const LIMIT_EN: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
+const limitOf = (kind: string): string => t(LIMIT_KO, LIMIT_EN)[kind] ?? kind
+const battery = (): string => t('배터리', 'battery')
 
 export const until = (at: number, now: number): string => {
   const minutes = Math.max(0, Math.round((at - now) / 60_000))
   const hours = Math.floor(minutes / 60)
 
-  if (hours >= 48) return `${Math.floor(hours / 24)}일 뒤 초기화`
+  if (hours >= 48) return t(`${Math.floor(hours / 24)}일 뒤 초기화`, `resets in ${Math.floor(hours / 24)}d`)
 
-  return hours === 0 ? `${minutes}분 뒤 초기화` : `${hours}시간 ${minutes % 60}분 뒤 초기화`
+  return hours === 0 ? t(`${minutes}분 뒤 초기화`, `resets in ${minutes}m`) : t(`${hours}시간 ${minutes % 60}분 뒤 초기화`, `resets in ${hours}h ${minutes % 60}m`)
 }
 
 const bar = (percent: number, size = 10): string => {
@@ -236,7 +249,7 @@ export const gaugeOf = (usage: Usage | null): string => {
   const free = batteryOf(usage)
   const window = usage?.limits.find(limit => limit.kind === 'five_hour')
 
-  return [free === undefined ? '' : `배터리 ${Math.round(free)}%`, window === undefined ? '' : `5시간 ${window.percentUsed}%`]
+  return [free === undefined ? '' : `${battery()} ${Math.round(free)}%`, window === undefined ? '' : `${limitOf('five_hour')} ${window.percentUsed}%`]
     .filter(part => part !== '')
     .join(' · ')
 }
@@ -247,9 +260,9 @@ export const gaugeIn = (usage: Usage | null, room: number): string => {
   const window = (kind: string): string => {
     const limit = usage?.limits.find(one => one.kind === kind)
 
-    return limit === undefined ? '' : `${LIMIT[kind] ?? kind} ${Math.round(limit.percentUsed)}%`
+    return limit === undefined ? '' : `${limitOf(kind)} ${Math.round(limit.percentUsed)}%`
   }
-  const parts = [free === undefined ? '' : `배터리 ${Math.round(free)}%`, window('five_hour'), window('seven_day'), usage?.usd === undefined ? '' : `$${usage.usd.toFixed(2)}`].filter(part => part !== '')
+  const parts = [free === undefined ? '' : `${battery()} ${Math.round(free)}%`, window('five_hour'), window('seven_day'), usage?.usd === undefined ? '' : `$${usage.usd.toFixed(2)}`].filter(part => part !== '')
 
   for (let kept = parts.length; kept > 0; kept -= 1) {
     const text = parts.slice(0, kept).join(' · ')
@@ -260,7 +273,7 @@ export const gaugeIn = (usage: Usage | null, room: number): string => {
   return ''
 }
 
-type Meter = { label: string; percent: number; tint: Color; text: string; reset: string; unit: '남음' | '사용' }
+type Meter = { label: string; percent: number; tint: Color; text: string; reset: string; unit: string }
 
 const metersOf = (scene: Scene): Meter[] => {
   const { usage } = scene
@@ -269,12 +282,12 @@ const metersOf = (scene: Scene): Meter[] => {
 
   if (usage !== null && free !== undefined) {
     meters.push({
-      label: '배터리',
+      label: battery(),
       percent: free,
       tint: free < 20 ? 'error' : free < 40 ? 'warning' : 'success',
-      text: `${Math.round(free)}% 남음 · 컨텍스트 ${amount(usage.contextTokens ?? 0)} / ${amount(usage.contextWindow)}`,
+      text: t(`${Math.round(free)}% 남음 · 컨텍스트 ${amount(usage.contextTokens ?? 0)} / ${amount(usage.contextWindow)}`, `${Math.round(free)}% left · context ${amount(usage.contextTokens ?? 0)} / ${amount(usage.contextWindow)}`),
       reset: '',
-      unit: '남음',
+      unit: t('남음', 'left'),
     })
   }
   for (const limit of usage?.limits ?? []) {
@@ -282,12 +295,12 @@ const metersOf = (scene: Scene): Meter[] => {
     const reset = due === '' ? '' : ` · ${due}`
 
     meters.push({
-      label: LIMIT[limit.kind] ?? limit.kind,
+      label: limitOf(limit.kind),
       percent: limit.percentUsed,
       tint: limit.percentUsed >= 90 ? 'error' : limit.percentUsed >= 70 ? 'warning' : 'success',
-      text: `${limit.percentUsed}% 사용${reset}`,
+      text: t(`${limit.percentUsed}% 사용${reset}`, `${limit.percentUsed}% used${reset}`),
       reset: due,
-      unit: '사용',
+      unit: t('사용', 'used'),
     })
   }
 
@@ -300,7 +313,7 @@ const spendersOf = (scene: Scene): MemberId[] => {
   return ORDER.filter(id => isSpent(by[id]))
 }
 
-const SPENT_HEAD = '멤버별 토큰 · 따로 맡은 일만 (함께 한 일은 원이 몫)'
+const spentHead = (): string => t('멤버별 토큰 · 따로 맡은 일만 (함께 한 일은 원이 몫)', "Tokens by member · her own tasks only (work beside WONI counts as WONI's)")
 
 /**
  * A member's line under the usage card. Tokens are counted where a model
@@ -311,13 +324,13 @@ export const spentLine = (id: MemberId, scene: Scene): string => {
   const tokens = spentBy(scene)[id]
   const running = scene.tasks.filter(task => task.member === id && isActive(task)).length
   const beside = id === 'woni' ? undefined : scene.live[id]
-  const waiting = running === 0 ? '' : `작업 중 ${running}개는 끝나면 집계`
+  const waiting = running === 0 ? '' : t(`작업 중 ${running}개는 끝나면 집계`, `${running} running, counted when done`)
 
-  if (isSpent(tokens)) return running === 0 ? spent(tokens) : `${spent(tokens)} · +${running}개 진행 중`
+  if (isSpent(tokens)) return running === 0 ? spent(tokens) : t(`${spent(tokens)} · +${running}개 진행 중`, `${spent(tokens)} · +${running} running`)
   if (waiting !== '') return waiting
-  if (beside !== undefined) return `따로 맡은 일 없음 · 원이와 함께 ${beside.count}번`
+  if (beside !== undefined) return t(`따로 맡은 일 없음 · 원이와 함께 ${beside.count}번`, `no task of her own · ${beside.count} beside WONI`)
 
-  return scene.tasks.some(task => task.member === id) ? '맡은 일은 있었지만 토큰 기록을 못 받음' : '따로 맡은 일 없음'
+  return scene.tasks.some(task => task.member === id) ? t('맡은 일은 있었지만 토큰 기록을 못 받음', 'had tasks, but no token record came') : t('따로 맡은 일 없음', 'no task of her own')
 }
 
 /** Rows the usage card takes, frame and all: with every member's line, or with only theirs who spent. */
@@ -340,23 +353,23 @@ const UsageCard = (kit: Kit, scene: Scene, width: number, isWhole: boolean): Ren
     <Box borderStyle="round" borderColor={pinkOf(kit.isLight)} paddingX={1} flexDirection="column" width={width}>
       <Box justifyContent="space-between" width={inner}>
         <Text color={pinkOf(kit.isLight)} bold>
-          사용량
+          {t('사용량', 'Usage')}
         </Text>
-        {usd !== undefined && <Text dimColor>{fit(`Claude 세션 $${usd.toFixed(2)}`, inner - 8)}</Text>}
+        {usd !== undefined && <Text dimColor>{fit(`${t('Claude 세션', 'Claude session')} $${usd.toFixed(2)}`, inner - 8)}</Text>}
       </Box>
       {meters.map(meter => (
         <Text key={meter.label} wrap="truncate-end">
-          <Text dimColor>{pad(meter.label, 7)}</Text>
+          <Text dimColor>{pad(meter.label, t(7, 8))}</Text>
           <Text color={meter.tint}>{bar(meter.percent)}</Text>
-          <Text>{` ${fit(meter.text, inner - 18)}`}</Text>
+          <Text>{` ${fit(meter.text, inner - t(18, 19))}`}</Text>
         </Text>
       ))}
-      {listed.length > 0 && <Text dimColor>{fit(SPENT_HEAD, inner)}</Text>}
-      {meters.length === 0 && listed.length === 0 && <Text dimColor>{fit('아직 읽은 사용량이 없어요.', inner)}</Text>}
+      {listed.length > 0 && <Text dimColor>{fit(spentHead(), inner)}</Text>}
+      {meters.length === 0 && listed.length === 0 && <Text dimColor>{fit(t('아직 읽은 사용량이 없어요.', 'No usage read yet.'), inner)}</Text>}
       {listed.map(id => (
         <Text key={id} wrap="truncate-end">
           {Heart(kit, id)}
-          <Text>{pad(MEMBERS[id].name, 7)}</Text>
+          <Text>{pad(nameOf(id), 7)}</Text>
           <Text dimColor={!isSpent(by[id])}>{fit(spentLine(id, scene), inner - 9)}</Text>
         </Text>
       ))}
@@ -370,11 +383,11 @@ type Chip = { task: Task; text: string }
 
 const chipsFor = (stage: readonly Task[], now: number, room: number): { chips: Chip[]; hidden: number } => {
   const forms: ((task: Task) => string)[] = [
-    task => ` ${MARK[task.status]} ${task.role} ${clock(elapsed(task, now))}`,
+    task => ` ${MARK[task.status]} ${roleName(task.role)} ${clock(elapsed(task, now))}`,
     task => ` ${MARK[task.status]} ${clock(elapsed(task, now))}`,
     task => ` ${MARK[task.status]}`,
   ]
-  const need = (task: Task, form: (task: Task) => string): number => cells(MEMBERS[task.member].name) + 2 + cells(form(task)) + 1
+  const need = (task: Task, form: (task: Task) => string): number => cells(nameOf(task.member)) + 2 + cells(form(task)) + 1
 
   for (const form of forms) {
     if (stage.reduce((total, task) => total + need(task, form), 0) <= room) {
@@ -396,10 +409,12 @@ const chipsFor = (stage: readonly Task[], now: number, room: number): { chips: C
 }
 
 /** What the row of names says of who takes the next prompt: nobody named, 원이 hands the work out as she sees fit. */
-export const aimHint = (target: MemberId | null): string => (target === null ? '원이가 나눠 맡김' : target === 'woni' ? '원이가 직접 처리' : `다음 명령은 ${MEMBERS[target].name}에게`)
+export const aimHint = (target: MemberId | null): string => (target === null ? t('원이가 나눠 맡김', 'WONI hands it out') : target === 'woni' ? t('원이가 직접 처리', 'WONI does it herself') : t(`다음 명령은 ${nameOf(target)}에게`, `next goes to ${nameOf(target)}`))
 
 /** The name that stands for nobody named: the default. */
-const AUTO = '자동'
+const auto = (): string => t('자동', 'auto')
+const aimLabel = (): string => t('받는 멤버', 'Send to')
+const setupLabel = (): string => t('역할 설정', 'Roles')
 
 /** The row that names who takes the next prompt: a press on a name picks her, and the usage stands beside. */
 const AimRow = (kit: Kit, scene: Scene, columns: number, band: Band, withBrand: boolean, withGauge = true): RenderElement => {
@@ -407,16 +422,16 @@ const AimRow = (kit: Kit, scene: Scene, columns: number, band: Band, withBrand: 
   const { aim } = band
   const picked = scene.target
   const hint = aimHint(picked)
-  const names = cells(AUTO) + 1 + ORDER.reduce((total, id) => total + cells(MEMBERS[id].name) + 1, 0) + 4
+  const names = cells(auto()) + 1 + ORDER.reduce((total, id) => total + cells(nameOf(id)) + 1, 0) + 4
   // Too narrow for all of it: the label goes, then the brand, then every name but the one picked.
-  const withLabel = columns >= (withBrand ? 10 : 0) + cells('받는 멤버') + 1 + names
+  const withLabel = columns >= (withBrand ? 10 : 0) + cells(aimLabel()) + 1 + names
   const isBranded = withBrand && columns >= 10 + names
   const shown: readonly (MemberId | null)[] = columns >= names ? [null, ...ORDER] : [scene.target]
-  const fixed = (isBranded ? 10 : 0) + (withLabel ? cells('받는 멤버') + 1 : 0) + names
+  const fixed = (isBranded ? 10 : 0) + (withLabel ? cells(aimLabel()) + 1 : 0) + names
   // The usage has the room first; the hint says again what the marked name shows.
   const gauge = withGauge ? gaugeIn(scene.usage, columns - fixed - 1) : ''
   const withHint = columns >= fixed + cells(hint) + 1 + (gauge === '' ? 0 : cells(gauge) + 1)
-  const name = (id: MemberId | null): string => (id === null ? AUTO : MEMBERS[id].name)
+  const name = (id: MemberId | null): string => (id === null ? auto() : nameOf(id))
   const key = (id: MemberId | null): string => `aim-${id ?? 'auto'}`
 
   return (
@@ -426,7 +441,7 @@ const AimRow = (kit: Kit, scene: Scene, columns: number, band: Band, withBrand: 
           {' RESCENE '}
         </Text>
       )}
-      {(withLabel || shown.length === 1) && <Text dimColor>받는 멤버</Text>}
+      {(withLabel || shown.length === 1) && <Text dimColor>{aimLabel()}</Text>}
       {shown.map(id =>
         aim === undefined ? (
           <Text key={key(id)} bold={id === picked} dimColor={id !== picked} color={id === picked && id !== null ? lineOf(id, kit.isLight) : undefined}>
@@ -467,7 +482,7 @@ const AimBar = (kit: Kit, scene: Scene, columns: number, band: Band, lead: 'bran
   const picked = scene.target
   const hint = `→ ${aimHint(picked)}`
   const mark = (id: MemberId | null): number => (id === picked && aim !== undefined ? 4 : 0)
-  const chip = (id: MemberId, withRoles: boolean): number => 2 + cells(MEMBERS[id].name) + mark(id) + (withRoles ? 1 + cells(roleIn(scene.cast, id)) : 0)
+  const chip = (id: MemberId, withRoles: boolean): number => 2 + cells(nameOf(id)) + mark(id) + (withRoles ? 1 + cells(roleName(roleIn(scene.cast, id))) : 0)
   const forms = [
     { withLead: true, withLabel: true, withRoles: true, withHint: true, withSetup: true },
     { withLead: true, withLabel: true, withRoles: true, withHint: true, withSetup: false },
@@ -480,11 +495,11 @@ const AimBar = (kit: Kit, scene: Scene, columns: number, band: Band, lead: 'bran
   const need = (form: (typeof forms)[number]): number =>
     widthOf([
       ...(form.withLead ? [GUTTER] : []),
-      ...(form.withLabel ? [cells('받는 멤버')] : []),
-      cells(AUTO) + mark(null),
+      ...(form.withLabel ? [cells(aimLabel())] : []),
+      cells(auto()) + mark(null),
       ...ORDER.map(id => chip(id, form.withRoles)),
       ...(form.withHint ? [cells(hint)] : []),
-      ...(form.withSetup ? [cells('역할 설정')] : []),
+      ...(form.withSetup ? [cells(setupLabel())] : []),
     ])
   const form = forms.find(one => need(one) <= columns)
 
@@ -502,35 +517,35 @@ const AimBar = (kit: Kit, scene: Scene, columns: number, band: Band, lead: 'bran
         ))}
       {form.withLabel && (
         <Text color={pinkOf(kit.isLight)} bold>
-          받는 멤버
+          {aimLabel()}
         </Text>
       )}
       {aim === undefined ? (
-        <Text bold={picked === null}>{AUTO}</Text>
+        <Text bold={picked === null}>{auto()}</Text>
       ) : picked === null ? (
         <Button key="aim-auto" variant="primary" onPress={() => aim(null)}>
-          {AUTO}
+          {auto()}
         </Button>
       ) : (
         <Button key="aim-auto" plain onPress={() => aim(null)}>
-          {AUTO}
+          {auto()}
         </Button>
       )}
       {ORDER.map(id => (
         <Box key={`chip-${id}`}>
           {Heart(kit, id)}
           {aim === undefined ? (
-            <Text bold={id === picked}>{MEMBERS[id].name}</Text>
+            <Text bold={id === picked}>{nameOf(id)}</Text>
           ) : id === picked ? (
             <Button key={`aim-${id}`} variant="primary" onPress={() => aim(id)}>
-              {MEMBERS[id].name}
+              {nameOf(id)}
             </Button>
           ) : (
             <Button key={`aim-${id}`} plain onPress={() => aim(id)}>
-              {MEMBERS[id].name}
+              {nameOf(id)}
             </Button>
           )}
-          {form.withRoles && <Text dimColor>{` ${roleIn(scene.cast, id)}`}</Text>}
+          {form.withRoles && <Text dimColor>{` ${roleName(roleIn(scene.cast, id))}`}</Text>}
         </Box>
       ))}
       {form.withHint && (
@@ -540,7 +555,7 @@ const AimBar = (kit: Kit, scene: Scene, columns: number, band: Band, lead: 'bran
       )}
       {form.withSetup && setup !== undefined && (
         <Button key="setup" plain dimColor onPress={setup}>
-          역할 설정
+          {setupLabel()}
         </Button>
       )}
     </Box>
@@ -550,7 +565,7 @@ const AimBar = (kit: Kit, scene: Scene, columns: number, band: Band, lead: 'bran
 /** The full band's row of usage: each figure a bar in its own tint, and when its window starts over where there is room to say. */
 const UsageBar = (kit: Kit, scene: Scene, columns: number, setup?: () => void): RenderElement | undefined => {
   const { Box, Text, Button } = kit
-  const way = setup === undefined ? 0 : cells('역할 설정')
+  const way = setup === undefined ? 0 : cells(setupLabel())
   const meters = metersOf(scene)
   const cost = scene.usage?.usd === undefined ? '' : `$${scene.usage.usd.toFixed(2)}`
   const percent = (meter: Meter, withUnits = false): string => `${Math.round(meter.percent)}%${withUnits ? ` ${meter.unit}` : ''}`
@@ -573,7 +588,7 @@ const UsageBar = (kit: Kit, scene: Scene, columns: number, setup?: () => void): 
   }
   const need = (form: (typeof forms)[number]): number =>
     widthOf([
-      ...(form.withLead ? [GUTTER, cells('사용량')] : []),
+      ...(form.withLead ? [GUTTER, cells(t('사용량', 'Usage'))] : []),
       ...meters.map(meter => cells(meter.label) + (form.size === 0 ? 0 : 1 + form.size) + 1 + cells(percent(meter, form.withUnits)) + cells(reset(meter, form))),
       ...(cost === '' ? [] : [cells(cost)]),
       ...(form.withWay ? [way] : []),
@@ -591,7 +606,7 @@ const UsageBar = (kit: Kit, scene: Scene, columns: number, setup?: () => void): 
       )}
       {form.withLead && (
         <Text color={pinkOf(kit.isLight)} bold>
-          사용량
+          {t('사용량', 'Usage')}
         </Text>
       )}
       {meters.map(meter => (
@@ -605,7 +620,7 @@ const UsageBar = (kit: Kit, scene: Scene, columns: number, setup?: () => void): 
       {cost !== '' && <Text dimColor>{cost}</Text>}
       {form.withWay && setup !== undefined && (
         <Button key="setup" plain dimColor onPress={setup}>
-          역할 설정
+          {setupLabel()}
         </Button>
       )}
     </Box>
@@ -622,7 +637,7 @@ const StageRows = (kit: Kit, scene: Scene, columns: number, withGauge: boolean, 
     .sort((a, b) => b.live.at - a.live.at)
   // The members at work beside 원이 take room on the row too: theirs is set aside before the rest is shared.
   const beside = doing.filter(one => isFresh(one.live, scene.now) && !stage.some(task => task.member === one.id))
-  const besideNeed = (id: MemberId): number => cells(MEMBERS[id].name) + 2 + 2 + 1
+  const besideNeed = (id: MemberId): number => cells(nameOf(id)) + 2 + 2 + 1
   const room = columns - 10
   const now: typeof beside = []
   let taken = 0
@@ -636,7 +651,7 @@ const StageRows = (kit: Kit, scene: Scene, columns: number, withGauge: boolean, 
   if (now.length < beside.length) taken += 4
   // The usage has its own row where that is drawn. Otherwise it is the first to go, then the unit's name.
   const gauge = withGauge ? gaugeOf(scene.usage) : ''
-  const head = unit === undefined ? '' : `${unit} 출동`
+  const head = unit === undefined ? '' : t(`${unit} 출동`, `${unit} on stage`)
   const plans = [
     { head, gauge },
     { head, gauge: '' },
@@ -649,7 +664,7 @@ const StageRows = (kit: Kit, scene: Scene, columns: number, withGauge: boolean, 
   const act = doing[0]
   // A line just said holds the second row for a while; after that it shows what is being done.
   const said = spoke !== null && (act === undefined || scene.now - spoke.at < 8000) ? spoke : null
-  const quoteRoom = said === null ? 0 : columns - 2 - cells(MEMBERS[said.member].name) - 3
+  const quoteRoom = said === null ? 0 : columns - 2 - cells(nameOf(said.member)) - 3
 
   return [
     <Box key="stage" gap={1}>
@@ -677,7 +692,7 @@ const StageRows = (kit: Kit, scene: Scene, columns: number, withGauge: boolean, 
           <Text key="doing" wrap="truncate-end">
             {Heart(kit, act.id)}
             {Badge(kit, act.id)}
-            <Text bold={act.live.running > 0}>{` ${act.live.running > 0 ? '▸' : act.live.isFailed === true ? '✗' : '✓'} ${fit(act.live.phrase, columns - cells(MEMBERS[act.id].name) - 8)}`}</Text>
+            <Text bold={act.live.running > 0}>{` ${act.live.running > 0 ? '▸' : act.live.isFailed === true ? '✗' : '✓'} ${fit(act.live.phrase, columns - cells(nameOf(act.id)) - 8)}`}</Text>
           </Text>,
         ]
       : []),
@@ -765,6 +780,12 @@ const musing = (id: MemberId, now: number): number => Math.floor(now / 45_000) +
 /** Whether a member's own call is running, or ended a moment ago. */
 export const isFresh = (live: Live, now: number): boolean => live.running > 0 || now - live.at < 6000
 
+/** What the members call the person: the producer. */
+const pd = (): string => t('피디니무', 'PD-nim')
+const carrying = (): string => t('이어서 작업하는 중', 'carrying on')
+const idleMark = (): string => t('○ 대기', '○ idle')
+const calls = (count: number): string => t(`도구 ${count}회`, `${count} tool calls`)
+
 /** The day so far in one line, for 원이's card. */
 const tally = (scene: Scene): string => {
   const ended = scene.tasks.filter(task => !isActive(task))
@@ -772,7 +793,7 @@ const tally = (scene: Scene): string => {
 
   if (ended.length === 0) return ''
 
-  return `오늘 무대: ${ended.length - failed}개 끝${failed === 0 ? '' : ` · ${failed}개 실패`}`
+  return t(`오늘 무대: ${ended.length - failed}개 끝${failed === 0 ? '' : ` · ${failed}개 실패`}`, `Today: ${ended.length - failed} done${failed === 0 ? '' : ` · ${failed} failed`}`)
 }
 
 /** The task of hers a card and her backstage are about: the one she is on, or the last she took. */
@@ -788,18 +809,18 @@ const cardOf = (id: MemberId, scene: Scene): Card => {
   if (id === 'woni') {
     const busy = WORKERS.filter(one => scene.tasks.some(task => task.member === one && isActive(task)))
 
-    const names = busy.map(one => MEMBERS[one].name).join(', ')
+    const names = busy.map(one => nameOf(one)).join(', ')
     const mine = scene.live.woni
     const isConducting = scene.turn !== null || busy.length > 0
-    const stage = busy.length === 0 ? '' : `무대 위: ${names}`
+    const stage = busy.length === 0 ? '' : t(`무대 위: ${names}`, `On stage: ${names}`)
     // Her last line stays up while she conducts and for a while after; then she is back to musing.
     const isRecent = isConducting || (scene.leader !== null && scene.now - scene.leader.at < 120_000)
-    const work = scene.turn !== null && scene.turn.ask !== '' ? `피디니무${scene.turn.to === undefined ? '' : ` → ${MEMBERS[scene.turn.to].name}`}: ${scene.turn.ask}` : stage !== '' ? stage : scene.turn !== null ? '이어서 작업하는 중' : '일을 기다리는 중'
+    const work = scene.turn !== null && scene.turn.ask !== '' ? `${pd()}${scene.turn.to === undefined ? '' : ` → ${nameOf(scene.turn.to)}`}: ${scene.turn.ask}` : stage !== '' ? stage : scene.turn !== null ? carrying() : t('일을 기다리는 중', 'waiting for work')
 
     return {
       id,
-      sub: `${member.remini} · ${member.title} · 리더`,
-      status: scene.turn !== null ? `● 지휘 중 ${clock(scene.now - scene.turn.startedAt)}` : busy.length > 0 ? '● 지휘 중' : '○ 대기',
+      sub: t(`${member.remini} · ${member.title} · 리더`, `${member.name} · leader`),
+      status: scene.turn !== null ? `${t('● 지휘 중', '● leading')} ${clock(scene.now - scene.turn.startedAt)}` : busy.length > 0 ? t('● 지휘 중', '● leading') : idleMark(),
       tint: undefined,
       isIdle: !isConducting,
       work,
@@ -815,7 +836,7 @@ const cardOf = (id: MemberId, scene: Scene): Card => {
   const active = scene.tasks.filter(task => task.member === id && isActive(task))
   const task = shownTask(scene.tasks, id)
   const role = roleIn(scene.cast, id)
-  const sub = `${member.remini} · ${member.title} · ${role}`
+  const sub = t(`${member.remini} · ${member.title} · ${role}`, `${member.name} · ${roleName(role)}`)
 
   const mine = scene.live[id]
 
@@ -825,10 +846,10 @@ const cardOf = (id: MemberId, scene: Scene): Card => {
     return {
       id,
       sub,
-      status: isNow ? '● 작업 중' : '○ 대기',
+      status: isNow ? t('● 작업 중', '● working') : idleMark(),
       tint: undefined,
       isIdle: !isNow,
-      work: `원이와 함께 ${role} · 이번 턴 ${mine.count}번`,
+      work: t(`원이와 함께 ${role} · 이번 턴 ${mine.count}번`, `${roleName(role)} beside WONI · ${mine.count} this turn`),
       quote: say(id, isNow ? 'start' : 'idle', isNow ? mine.count : musing(id, scene.now), role),
       note: '',
       last: `${mine.running > 0 ? '▸' : mine.isFailed === true ? '✗' : '✓'} ${mine.phrase}`,
@@ -837,20 +858,20 @@ const cardOf = (id: MemberId, scene: Scene): Card => {
     }
   }
   if (task === undefined) {
-    return { id, sub, status: '○ 대기', tint: undefined, isIdle: true, work: '맡은 일 없음', quote: say(id, 'idle', musing(id, scene.now), role), note: '', last: '', isAtWork: false, pulse: '' }
+    return { id, sub, status: idleMark(), tint: undefined, isIdle: true, work: t('맡은 일 없음', 'no task'), quote: say(id, 'idle', musing(id, scene.now), role), note: '', last: '', isAtWork: false, pulse: '' }
   }
 
-  const engine = task.kind === 'orca' && task.engine !== '시연' ? `Orca ${task.engine}` : task.engine
-  const more = active.length > 1 ? ` 외 ${active.length - 1}개` : ''
-  const idle = task.kind === 'orca' ? '▸ Orca 작업자가 일하는 중 · 결과 파일을 기다려요' : '▸ 시작하는 중'
+  const engine = task.kind !== 'orca' ? task.engine : task.engine === '시연' ? demo() : `Orca ${task.engine}`
+  const more = active.length > 1 ? t(` 외 ${active.length - 1}개`, ` +${active.length - 1} more`) : ''
+  const idle = task.kind === 'orca' ? t('▸ Orca 작업자가 일하는 중 · 결과 파일을 기다려요', '▸ an Orca worker is on it · waiting for its result file') : starting()
   // A worker's own screen says what it is on; an agent's tool calls do.
-  const doing = task.kind === 'orca' ? (task.detail === undefined ? idle : `▸ ${task.detail}`) : task.tool === undefined ? idle : `▸ ${task.detail ?? task.tool} · 도구 ${task.toolCount}회`
+  const doing = task.kind === 'orca' ? (task.detail === undefined ? idle : `▸ ${task.detail}`) : task.tool === undefined ? idle : `▸ ${task.detail ?? task.tool} · ${calls(task.toolCount)}`
   const back = task.report === undefined ? '' : `↳ ${task.report}`
 
   return {
     id,
     sub,
-    status: `${MARK[task.status]} ${WORD[task.status]} ${clock(elapsed(task, scene.now))}`,
+    status: `${MARK[task.status]} ${wordOf(task.status)} ${clock(elapsed(task, scene.now))}`,
     tint: TINT[task.status],
     isIdle: false,
     work: `${task.title}${more} · ${engine}`,
@@ -879,9 +900,8 @@ const cardsOf = (scene: Scene): readonly Card[] => {
  */
 const Head = (kit: Kit, card: Card, width: number): RenderElement => {
   const { Box, Text, Button } = kit
-  const member = MEMBERS[card.id]
   const { press, hotkey } = card
-  const named = press === undefined ? cells(member.name) + 2 : cells(member.name) + (hotkey === undefined ? 0 : 3)
+  const named = press === undefined ? cells(nameOf(card.id)) + 2 : cells(nameOf(card.id)) + (hotkey === undefined ? 0 : 3)
   // No room for her state in words: its mark alone.
   const status = 2 + named + 1 + cells(card.status) > width ? card.status.slice(0, 1) : card.status
   const subRoom = width - 2 - named - 1 - cells(status) - 1
@@ -894,7 +914,7 @@ const Head = (kit: Kit, card: Card, width: number): RenderElement => {
           Badge(kit, card.id)
         ) : (
           <Button key={`who-${card.id}`} plain {...(hotkey === undefined ? {} : { hotkey })} onPress={press}>
-            {member.name}
+            {nameOf(card.id)}
           </Button>
         )}
         {subRoom >= 4 && <Text dimColor>{` ${fit(card.sub, subRoom)}`}</Text>}
@@ -1028,13 +1048,16 @@ export const densityOf = (scene: Scene, room: Room): Density => {
 
 const CARD_ROWS: Record<Density, number> = { full: ICON_ROWS + 2, plain: 5, slim: 2 }
 
+const demo = (): string => t('시연', 'demo')
+const starting = (): string => t('▸ 시작하는 중', '▸ starting')
+
 export const ago = (at: number, now: number): string => {
   const seconds = Math.max(0, Math.round((now - at) / 1000))
 
-  if (seconds < 10) return '방금'
-  if (seconds < 60) return `${seconds}초 전`
+  if (seconds < 10) return t('방금', 'now')
+  if (seconds < 60) return t(`${seconds}초 전`, `${seconds}s ago`)
 
-  return seconds < 3600 ? `${Math.floor(seconds / 60)}분 전` : `${Math.floor(seconds / 3600)}시간 전`
+  return seconds < 3600 ? t(`${Math.floor(seconds / 60)}분 전`, `${Math.floor(seconds / 60)}m ago`) : t(`${Math.floor(seconds / 3600)}시간 전`, `${Math.floor(seconds / 3600)}h ago`)
 }
 
 /** The stage log: the last lines the members said, newest first, as many as the rows left hold. */
@@ -1047,16 +1070,16 @@ const FeedCard = (kit: Kit, scene: Scene, width: number, lines: number): RenderE
   return (
     <Box borderStyle="round" borderColor="subtle" paddingX={1} flexDirection="column" width={width}>
       <Box justifyContent="space-between" width={inner}>
-        <Text bold>무대 로그</Text>
+        <Text bold>{t('무대 로그', 'Stage log')}</Text>
         {champion !== undefined && (
           <Text dimColor wrap="truncate-end">
-            {fit(`명대사 월드컵 1위 “${champion.quote}” ${champion.count}번`, inner - 10)}
+            {fit(t(`명대사 월드컵 1위 “${champion.quote}” ${champion.count}번`, `Quote cup #1 “${champion.quote}” ×${champion.count}`), inner - 10)}
           </Text>
         )}
       </Box>
       {shown.map((said, index) => {
         const when = ago(said.at, scene.now)
-        const name = MEMBERS[said.member].name
+        const name = nameOf(said.member)
         const room = inner - 2 - 7 - cells(when) - 1
         const quote = fit(`“${said.quote}”`, room)
         const noteRoom = room - cells(quote) - 1
@@ -1103,7 +1126,7 @@ const tagline = (scene: Scene): string => {
 
   if (running === 0 && ended.length === 0) return '리센느 아세요?'
 
-  return [running > 0 ? `진행 ${running}` : '', `완료 ${ended.length - failed}`, failed > 0 ? `실패 ${failed}` : ''].filter(part => part !== '').join(' · ')
+  return [running > 0 ? t(`진행 ${running}`, `${running} running`) : '', t(`완료 ${ended.length - failed}`, `${ended.length - failed} done`), failed > 0 ? t(`실패 ${failed}`, `${failed} failed`) : ''].filter(part => part !== '').join(' · ')
 }
 
 /** The members whose card shows them at work: the ones whose icon moves. */
@@ -1114,7 +1137,7 @@ export const moversOf = (scene: Scene): MemberId[] => cardsOf(scene).filter(card
 type Row = { text: string; tone: 'head' | 'now' | 'plain' | 'dim' }
 type Part = { head: string; rows: readonly string[]; from: 'head' | 'tail' }
 
-const kindOf = (task: Task): string => (task.kind === 'agent' ? `서브에이전트 ${task.engine}` : task.engine === '시연' ? '시연' : `Orca ${task.engine}`)
+const kindOf = (task: Task): string => (task.kind === 'agent' ? t(`서브에이전트 ${task.engine}`, `subagent ${task.engine}`) : task.engine === '시연' ? demo() : `Orca ${task.engine}`)
 
 const stepLine = (step: Step, now: number): string => `${pad(ago(step.at, now), 7)} ${step.text}`
 
@@ -1132,44 +1155,44 @@ const backstage = (id: MemberId, scene: Scene, room: number): Row[] => {
 
   if (id === 'woni') {
     const { turn } = scene
-    const busy = scene.tasks.filter(isActive).map(one => `${MEMBERS[one.member].name} · ${one.title} · ${WORD[one.status]} ${clock(elapsed(one, scene.now))}`)
+    const busy = scene.tasks.filter(isActive).map(one => `${nameOf(one.member)} · ${one.title} · ${wordOf(one.status)} ${clock(elapsed(one, scene.now))}`)
 
-    if (turn === null) top.push({ text: '받은 요청을 기다리는 중', tone: 'dim' })
+    if (turn === null) top.push({ text: t('받은 요청을 기다리는 중', 'waiting for a request'), tone: 'dim' })
     else {
-      const to = turn.to === undefined ? '' : ` → ${MEMBERS[turn.to].name}`
+      const to = turn.to === undefined ? '' : ` → ${nameOf(turn.to)}`
 
-      top.push({ text: turn.ask === '' ? '이어서 작업하는 중' : `피디니무${to}: ${turn.ask}`, tone: 'head' })
-      top.push({ text: `지휘 ${clock(scene.now - turn.startedAt)}째`, tone: 'dim' })
+      top.push({ text: turn.ask === '' ? carrying() : `${pd()}${to}: ${turn.ask}`, tone: 'head' })
+      top.push({ text: t(`지휘 ${clock(scene.now - turn.startedAt)}째`, `leading for ${clock(scene.now - turn.startedAt)}`), tone: 'dim' })
     }
     const ended = scene.tasks
       .filter(one => !isActive(one))
       .sort((a, b) => (b.endedAt ?? 0) - (a.endedAt ?? 0))
-      .map(one => `${MARK[one.status]} ${MEMBERS[one.member].name} · ${one.title} · ${spoken(elapsed(one, scene.now))}`)
+      .map(one => `${MARK[one.status]} ${nameOf(one.member)} · ${one.title} · ${spoken(elapsed(one, scene.now))}`)
     const said = [...scene.feed].reverse().filter(line => line.member === 'woni').map(line => `${pad(ago(line.at, scene.now), 7)} “${line.quote}” ${line.note}`)
 
-    if (busy.length > 0) parts.push({ head: '무대 위', rows: busy, from: 'head' })
-    if (ended.length > 0) parts.push({ head: '끝난 무대 (최근부터)', rows: ended, from: 'head' })
-    if (said.length > 0) parts.push({ head: '원이가 한 말', rows: said, from: 'head' })
+    if (busy.length > 0) parts.push({ head: t('무대 위', 'On stage'), rows: busy, from: 'head' })
+    if (ended.length > 0) parts.push({ head: t('끝난 무대 (최근부터)', 'Finished (newest first)'), rows: ended, from: 'head' })
+    if (said.length > 0) parts.push({ head: t('원이가 한 말', 'What WONI said'), rows: said, from: 'head' })
   }
   if (task !== undefined) {
     const others = scene.tasks.filter(one => one.member === id).length - 1
     const peeked = scene.peek?.id === task.id ? scene.peek.lines : []
     const trail = [...(task.trail ?? [])].reverse().slice(isActive(task) ? 1 : 0).map(step => stepLine(step, scene.now))
 
-    top.push({ text: `맡은 일: ${task.title}${others > 0 ? ` (외 ${others}건)` : ''}`, tone: 'head' })
-    top.push({ text: `${kindOf(task)} · ${WORD[task.status]} ${clock(elapsed(task, scene.now))} · 도구 ${task.toolCount}회`, tone: 'dim' })
-    if (task.brief !== undefined) top.push({ text: `지시: ${task.brief}`, tone: 'plain' })
-    if (isActive(task)) top.push({ text: task.tool !== undefined || task.detail !== undefined ? `▸ ${task.detail ?? task.tool}` : task.kind === 'orca' ? '▸ Orca 작업자가 일하는 중' : '▸ 시작하는 중', tone: 'now' })
+    top.push({ text: t(`맡은 일: ${task.title}${others > 0 ? ` (외 ${others}건)` : ''}`, `Task: ${task.title}${others > 0 ? ` (+${others} more)` : ''}`), tone: 'head' })
+    top.push({ text: `${kindOf(task)} · ${wordOf(task.status)} ${clock(elapsed(task, scene.now))} · ${calls(task.toolCount)}`, tone: 'dim' })
+    if (task.brief !== undefined) top.push({ text: `${t('지시', 'Brief')}: ${task.brief}`, tone: 'plain' })
+    if (isActive(task)) top.push({ text: task.tool !== undefined || task.detail !== undefined ? `▸ ${task.detail ?? task.tool}` : task.kind === 'orca' ? t('▸ Orca 작업자가 일하는 중', '▸ an Orca worker is on it') : starting(), tone: 'now' })
     else top.push({ text: `${MARK[task.status]} ${task.note}`, tone: 'plain' })
-    if (trail.length > 0) parts.push({ head: '한 일 (최근부터)', rows: trail, from: 'head' })
-    if (peeked.length > 0) parts.push(isActive(task) ? { head: scene.peek?.isStale === true ? '작업자 화면 (지금은 못 읽음 · 마지막으로 읽은 것)' : '작업자 화면 (지금)', rows: peeked, from: 'tail' } : { head: '결과 파일', rows: peeked, from: 'head' })
-    else if (task.kind === 'orca' && isActive(task)) top.push({ text: task.live === undefined && task.term === undefined ? '진행 화면이 없는 실행이에요 (Orca 탭으로 띄우면 보여요) · 결과 파일을 기다려요' : '작업자 화면을 기다리는 중', tone: 'dim' })
-    else if (!isActive(task) && task.summary !== undefined) parts.push({ head: '보고', rows: task.summary, from: 'head' })
+    if (trail.length > 0) parts.push({ head: t('한 일 (최근부터)', 'What she did (newest first)'), rows: trail, from: 'head' })
+    if (peeked.length > 0) parts.push(isActive(task) ? { head: scene.peek?.isStale === true ? t('작업자 화면 (지금은 못 읽음 · 마지막으로 읽은 것)', "Worker's screen (unreadable now · as last read)") : t('작업자 화면 (지금)', "Worker's screen (now)"), rows: peeked, from: 'tail' } : { head: t('결과 파일', 'Result file'), rows: peeked, from: 'head' })
+    else if (task.kind === 'orca' && isActive(task)) top.push({ text: task.live === undefined && task.term === undefined ? t('진행 화면이 없는 실행이에요 (Orca 탭으로 띄우면 보여요) · 결과 파일을 기다려요', 'This run has no screen to show (launch it in an Orca tab to see one) · waiting for its result file') : t('작업자 화면을 기다리는 중', "waiting for the worker's screen"), tone: 'dim' })
+    else if (!isActive(task) && task.summary !== undefined) parts.push({ head: t('보고', 'Report'), rows: task.summary, from: 'head' })
     else if (!isActive(task) && task.report !== undefined) top.push({ text: `↳ ${task.report}`, tone: 'plain' })
   }
-  if (stepped.length > 0) parts.push({ head: id === 'woni' ? '지휘 기록 (최근부터)' : '원이와 함께 한 일 (최근부터)', rows: stepped, from: 'head' })
-  if (task === undefined && id !== 'woni' && stepped.length === 0) top.push({ text: '아직 한 일이 없어요', tone: 'dim' })
-  top.push({ text: `토큰: ${spentLine(id, scene)}`, tone: 'dim' })
+  if (stepped.length > 0) parts.push({ head: id === 'woni' ? t('지휘 기록 (최근부터)', 'Lead log (newest first)') : t('원이와 함께 한 일 (최근부터)', 'Done beside WONI (newest first)'), rows: stepped, from: 'head' })
+  if (task === undefined && id !== 'woni' && stepped.length === 0) top.push({ text: t('아직 한 일이 없어요', 'Nothing done yet'), tone: 'dim' })
+  top.push({ text: `${t('토큰', 'Tokens')}: ${spentLine(id, scene)}`, tone: 'dim' })
 
   // The rows left go round the lists a row at a time, so a short one is shown whole and none is left out.
   const give = parts.map(() => 0)
@@ -1210,16 +1233,16 @@ const Tabs = (kit: Kit, shown: MemberId, acts: Acts, width: number): RenderEleme
   return (
     <Box gap={1} width={width}>
       <Button key="who-all" plain hotkey="0" onPress={() => pick(null)}>
-        전체
+        {t('전체', 'All')}
       </Button>
       {ids.map((id, index) =>
         id === shown ? (
           <Button key={`who-${id}`} variant="primary" hotkey={String(index + 1)} onPress={() => pick(null)}>
-            {MEMBERS[id].name}
+            {nameOf(id)}
           </Button>
         ) : (
           <Button key={`who-${id}`} plain hotkey={String(index + 1)} onPress={() => pick(id)}>
-            {MEMBERS[id].name}
+            {nameOf(id)}
           </Button>
         ),
       )}
@@ -1243,10 +1266,10 @@ const Backstage = (kit: Kit, scene: Scene, id: MemberId, isOn: boolean, room: Ro
           <Text backgroundColor={PINK} color="#000000" bold>
             {' RESCENE '}
           </Text>
-          <Text bold>{` 백스테이지: ${MEMBERS[id].name}`}</Text>
+          <Text bold>{t(` 백스테이지: ${nameOf(id)}`, ` Backstage: ${nameOf(id)}`)}</Text>
         </Text>
         <Text color={isOn ? pinkOf(kit.isLight) : undefined} dimColor={!isOn}>
-          {isOn ? 'REMINE ♥' : '꺼짐'}
+          {isOn ? 'REMINE ♥' : t('꺼짐', 'off')}
         </Text>
       </Box>
       {Ribbon(kit, width)}
@@ -1269,16 +1292,18 @@ const Backstage = (kit: Kit, scene: Scene, id: MemberId, isOn: boolean, room: Ro
         )}
       </Box>
       <Text dimColor wrap="truncate-end">
-        {fit(width >= 50 ? '0 전체 보기 · 1~5 멤버 · Esc 닫기' : '0 전체 보기 · Esc 닫기', width)}
+        {fit(width >= 50 ? t('0 전체 보기 · 1~5 멤버 · Esc 닫기', '0 all · 1-5 member · Esc close') : t('0 전체 보기 · Esc 닫기', '0 all · Esc close'), width)}
       </Text>
     </Box>
   )
 }
 
+const byHand = (): string => t('지금: 직접 설정', 'Now: set by you')
+
 /** Who has which kind of work, as plain lines: what `/rescene role` prints. */
 export const castLines = (cast: Cast): string[] => [
-  isSameCast(cast, CAST) ? '지금: 자동 (기본, 멤버 본래 포지션)' : '지금: 직접 설정',
-  ...ROLES.map(role => `${pad(role, 5)}${MEMBERS[cast[role]].heart} ${pad(MEMBERS[cast[role]].name, 7)}${DUTY[role]}`),
+  isSameCast(cast, CAST) ? t('지금: 자동 (기본, 멤버 본래 포지션)', 'Now: auto (default, each member in her own position)') : byHand(),
+  ...ROLES.map(role => `${pad(roleName(role), t(5, 9))}${MEMBERS[cast[role]].heart} ${pad(nameOf(cast[role]), 7)}${dutyOf(role)}`),
 ]
 
 /** The screen the roles are set on: a press on a kind of work gives it to the member whose row it is in. */
@@ -1287,15 +1312,13 @@ const Casting = (kit: Kit, scene: Scene, isOn: boolean, room: Room, acts: Acts):
   const width = Math.max(20, Math.min(room.columns, 84))
   const { setup, recast } = acts
   // A name and four kinds of work in columns, inside the frame.
-  const isTable = recast !== undefined && width >= 50
+  const isTable = recast !== undefined && width >= t(50, 66)
   const pink = pinkOf(kit.isLight)
   const isAuto = isSameCast(scene.cast, CAST)
-  const notes = [
-    '자동(기본): 멤버 본래 포지션대로, 일의 성격을 보고 모드가 맡깁니다.',
-    '역할을 누르면 그 멤버가 맡고, 원래 맡던 멤버와 맞바꿉니다.',
-    '다음 작업부터 적용되고, 다음 세션에도 그대로 남습니다.',
-    '담당 멤버가 바쁘면 손이 빈 멤버가 대신 맡습니다.',
-  ]
+  const notes = t(
+    ['자동(기본): 멤버 본래 포지션대로, 일의 성격을 보고 모드가 맡깁니다.', '역할을 누르면 그 멤버가 맡고, 원래 맡던 멤버와 맞바꿉니다.', '다음 작업부터 적용되고, 다음 세션에도 그대로 남습니다.', '담당 멤버가 바쁘면 손이 빈 멤버가 대신 맡습니다.'],
+    ['Auto (default): each member in her own position, cast by the kind of work.', 'Press a role and that member takes it, swapping with whoever had it.', 'It applies from the next task on, and stays for later sessions.', 'When the member for a role is busy, one with free hands takes it.'],
+  )
 
   return (
     <Box flexDirection="column" width={width}>
@@ -1304,11 +1327,11 @@ const Casting = (kit: Kit, scene: Scene, isOn: boolean, room: Room, acts: Acts):
           <Text backgroundColor={PINK} color="#000000" bold>
             {' RESCENE '}
           </Text>
-          <Text bold>{' 역할 설정'}</Text>
+          <Text bold>{` ${setupLabel()}`}</Text>
         </Text>
         {width >= 40 && (
           <Text color={isOn ? pink : undefined} dimColor={!isOn}>
-            {isOn ? 'REMINE ♥' : '꺼짐'}
+            {isOn ? 'REMINE ♥' : t('꺼짐', 'off')}
           </Text>
         )}
       </Box>
@@ -1316,45 +1339,45 @@ const Casting = (kit: Kit, scene: Scene, isOn: boolean, room: Room, acts: Acts):
       {setup !== undefined && (
         <Box gap={2} width={width}>
           <Button key="setup-close" plain hotkey="0" onPress={() => setup(false)}>
-            돌아가기
+            {t('돌아가기', 'Back')}
           </Button>
           {recast !== undefined &&
             (isAuto ? (
               <Button key="cast-auto" variant="primary" hotkey="a" onPress={() => recast(null, '구현')}>
-                자동
+                {auto()}
               </Button>
             ) : (
               <Button key="cast-auto" plain hotkey="a" onPress={() => recast(null, '구현')}>
-                자동
+                {auto()}
               </Button>
             ))}
           <Text color={isAuto ? undefined : pink} dimColor={isAuto} wrap="truncate-end">
-            {fit(isAuto ? '지금: 자동 (기본)' : '지금: 직접 설정', Math.max(0, width - 30))}
+            {fit(isAuto ? t('지금: 자동 (기본)', 'Now: auto (default)') : byHand(), Math.max(0, width - 30))}
           </Text>
         </Box>
       )}
       <Box borderStyle="round" borderColor={pink} paddingX={1} flexDirection="column" width={width}>
         <Text wrap="truncate-end">
           {Heart(kit, 'woni')}
-          <Text bold>{pad(MEMBERS.woni.name, 8)}</Text>
-          <Text dimColor>{fit('지휘 · 리더는 그대로', width - 14)}</Text>
+          <Text bold>{pad(nameOf('woni'), 8)}</Text>
+          <Text dimColor>{fit(t('지휘 · 리더는 그대로', 'lead · the leader stays'), width - 14)}</Text>
         </Text>
         {WORKERS.map(id =>
           isTable ? (
             <Box key={`cast-${id}`}>
               <Box width={10}>
                 {Heart(kit, id)}
-                <Text bold>{MEMBERS[id].name}</Text>
+                <Text bold>{nameOf(id)}</Text>
               </Box>
               {ROLES.map(role => (
-                <Box key={`cell-${id}-${role}`} width={9}>
+                <Box key={`cell-${id}-${role}`} width={t(9, 13)}>
                   {scene.cast[role] === id ? (
                     <Button key={`cast-${id}-${role}`} variant="primary" onPress={() => recast(id, role)}>
-                      {role}
+                      {roleName(role)}
                     </Button>
                   ) : (
                     <Button key={`cast-${id}-${role}`} plain dimColor onPress={() => recast(id, role)}>
-                      {role}
+                      {roleName(role)}
                     </Button>
                   )}
                 </Box>
@@ -1363,21 +1386,21 @@ const Casting = (kit: Kit, scene: Scene, isOn: boolean, room: Room, acts: Acts):
           ) : (
             <Text key={`cast-${id}`} wrap="truncate-end">
               {Heart(kit, id)}
-              <Text bold>{pad(MEMBERS[id].name, 8)}</Text>
-              <Text color={lineOf(id, kit.isLight)}>{roleIn(scene.cast, id)}</Text>
+              <Text bold>{pad(nameOf(id), 8)}</Text>
+              <Text color={lineOf(id, kit.isLight)}>{roleName(roleIn(scene.cast, id))}</Text>
             </Text>
           ),
         )}
       </Box>
       <Box borderStyle="round" borderColor={pink} paddingX={1} flexDirection="column" width={width}>
         <Text color={pink} bold wrap="truncate-end">
-          {fit('역할이 하는 일', width - 4)}
+          {fit(t('역할이 하는 일', 'What each role does'), width - 4)}
         </Text>
         {ROLES.map(role => (
           <Text key={`duty-${role}`} wrap="truncate-end">
-            <Text bold>{pad(role, 6)}</Text>
-            <Text color={lineOf(scene.cast[role], kit.isLight)}>{pad(MEMBERS[scene.cast[role]].name, 8)}</Text>
-            <Text dimColor>{fit(DUTY[role], width - 4 - 14)}</Text>
+            <Text bold>{pad(roleName(role), t(6, 9))}</Text>
+            <Text color={lineOf(scene.cast[role], kit.isLight)}>{pad(nameOf(scene.cast[role]), 8)}</Text>
+            <Text dimColor>{fit(dutyOf(role), width - 4 - t(14, 17))}</Text>
           </Text>
         ))}
       </Box>
@@ -1387,7 +1410,7 @@ const Casting = (kit: Kit, scene: Scene, isOn: boolean, room: Room, acts: Acts):
         </Text>
       ))}
       <Text dimColor wrap="truncate-end">
-        {fit(isTable ? '0 돌아가기 · a 자동 · /rescene role 리브 구현 · /rescene role auto' : '/rescene role 리브 구현 · /rescene role auto', width)}
+        {fit(isTable ? t('0 돌아가기 · a 자동 · /rescene role 리브 구현 · /rescene role auto', '0 back · a auto · /rescene role LIV build · /rescene role auto') : t('/rescene role 리브 구현 · /rescene role auto', '/rescene role LIV build · /rescene role auto'), width)}
       </Text>
     </Box>
   )
@@ -1406,7 +1429,7 @@ export const drawPane = (kit: Kit, scene: Scene, isOn: boolean, room: Room, beat
   const withSetup = setup !== undefined && width >= 40
   const unit = unitOf(scene.tasks, Math.floor(scene.waveAt / 1000))
   const isBusy = scene.tasks.some(isActive)
-  const stage = unit !== undefined ? `지금 무대: ${unit}` : isBusy ? '지금 무대 위' : scene.turn !== null ? '원이 싱글코어 가동 중' : '대기실'
+  const stage = unit !== undefined ? t(`지금 무대: ${unit}`, `On stage now: ${unit}`) : isBusy ? t('지금 무대 위', 'On stage now') : scene.turn !== null ? t('원이 싱글코어 가동 중', 'WONI running single-core') : t('대기실', 'Green room')
   // Her name is the way into her backstage: a press on it, or its digit while the pane has the keys.
   const cards = cardsOf(scene).map((card, index): Card => (pick === undefined ? card : { ...card, hotkey: String(index + 1), press: () => pick(card.id) }))
   const draw = density === 'full' ? FullCard : density === 'plain' ? PlainCard : SlimCard
@@ -1429,7 +1452,7 @@ export const drawPane = (kit: Kit, scene: Scene, isOn: boolean, room: Room, beat
           <Box flexDirection="column" width={width - LOGO.columns - 2}>
             <Box justifyContent="flex-end" width={width - LOGO.columns - 2}>
               <Text color={isOn ? pinkOf(kit.isLight) : undefined} dimColor={!isOn}>
-                {isOn ? 'REMINE ♥' : '꺼짐'}
+                {isOn ? 'REMINE ♥' : t('꺼짐', 'off')}
               </Text>
             </Box>
             <Box justifyContent="flex-end" width={width - LOGO.columns - 2}>
@@ -1454,7 +1477,7 @@ export const drawPane = (kit: Kit, scene: Scene, isOn: boolean, room: Room, beat
           </Text>
           {(width >= 40 || !isOn) && (
             <Text color={isOn ? pinkOf(kit.isLight) : undefined} dimColor={!isOn}>
-              {isOn ? 'REMINE ♥' : '꺼짐'}
+              {isOn ? 'REMINE ♥' : t('꺼짐', 'off')}
             </Text>
           )}
         </Box>
@@ -1463,7 +1486,7 @@ export const drawPane = (kit: Kit, scene: Scene, isOn: boolean, room: Room, beat
       {cards.map(card => draw(kit, card, width, beat))}
       {density === 'slim' ? (
         <Text dimColor wrap="truncate-end">
-          {fit(meters.length === 0 ? '사용량은 /rescene usage' : meters.map(meter => `${meter.label} ${Math.round(meter.percent)}%`).join(' · '), width)}
+          {fit(meters.length === 0 ? t('사용량은 /rescene usage', 'Usage: /rescene usage') : meters.map(meter => `${meter.label} ${Math.round(meter.percent)}%`).join(' · '), width)}
         </Text>
       ) : (
         UsageCard(kit, scene, width, isWhole)
@@ -1472,11 +1495,11 @@ export const drawPane = (kit: Kit, scene: Scene, isOn: boolean, room: Room, beat
       <Box gap={1} width={width}>
         {withSetup && (
           <Button key="setup" plain hotkey="r" onPress={() => setup(true)}>
-            역할 설정
+            {setupLabel()}
           </Button>
         )}
         <Text dimColor wrap="truncate-end">
-          {fit(pick === undefined ? '/rescene usage · cup · clear · off · Esc 닫기' : withSetup ? '· 이름 누르면 활동 보기 (1~5) · /rescene usage · cup · off' : '이름을 누르면 활동 보기 (1~5) · /rescene usage · cup · off', width - (withSetup ? 13 : 0))}
+          {fit(pick === undefined ? t('/rescene usage · cup · clear · off · Esc 닫기', '/rescene usage · cup · clear · off · Esc close') : withSetup ? t('· 이름 누르면 활동 보기 (1~5) · /rescene usage · cup · off', '· press a name for her backstage (1-5) · /rescene usage · cup · off') : t('이름을 누르면 활동 보기 (1~5) · /rescene usage · cup · off', 'press a name for her backstage (1-5) · /rescene usage · cup · off'), width - (withSetup ? cells(setupLabel()) + 4 : 0))}
         </Text>
       </Box>
     </Box>
@@ -1489,17 +1512,17 @@ export const rosterLines = (scene: Scene): string[] =>
   ORDER.map(id => {
     const card = cardsOf(scene)[ORDER.indexOf(id)] ?? cardOf(id, scene)
 
-    return `${MEMBERS[id].heart} ${MEMBERS[id].name} (${roleIn(scene.cast, id)}) ${card.status}${card.isIdle ? '' : ` · ${card.work}`}`
+    return `${MEMBERS[id].heart} ${nameOf(id)} (${roleName(roleIn(scene.cast, id))}) ${card.status}${card.isIdle ? '' : ` · ${card.work}`}`
   })
 
 /** The usage as plain lines: what `/rescene usage` prints. */
 export const usageLines = (scene: Scene): string[] => {
-  const lines = metersOf(scene).map(meter => `${pad(meter.label, 7)}${bar(meter.percent)} ${meter.text}`)
+  const lines = metersOf(scene).map(meter => `${pad(meter.label, t(7, 8))}${bar(meter.percent)} ${meter.text}`)
 
-  if (scene.usage?.usd !== undefined) lines.push(`Claude 세션 비용 $${scene.usage.usd.toFixed(2)}`)
+  if (scene.usage?.usd !== undefined) lines.push(`${t('Claude 세션 비용', 'Claude session cost')} $${scene.usage.usd.toFixed(2)}`)
 
-  lines.push(SPENT_HEAD)
-  for (const id of ORDER) lines.push(`${MEMBERS[id].heart} ${MEMBERS[id].name}: ${spentLine(id, scene)}`)
+  lines.push(spentHead())
+  for (const id of ORDER) lines.push(`${MEMBERS[id].heart} ${nameOf(id)}: ${spentLine(id, scene)}`)
 
   return lines
 }

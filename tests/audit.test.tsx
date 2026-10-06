@@ -5,6 +5,9 @@ import { expect, mock, test } from 'claude-code/testing'
 import { cells } from '../hooks/view'
 import { CAST, castOf, recast } from '../hooks/members'
 
+// The texts these tests read are the Korean ones: the language is pinned, whatever the machine's own.
+const KO = { options: { language: 'ko' } }
+
 const observe = (on: On) => {
   const state: Record<string, unknown> = {}
   on('state.set', async ($, e, next) => { const result = await next(e); if (result.value?.isSet) state[e.key] = e.value; return result })
@@ -17,7 +20,7 @@ const SPAWN = { tool_use_id: 'a', prompt: '점검', description: '메이: 일', 
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 3, bodyColumns: 20, scroll: { offset: 0, bodyRows: 3 }, view: {} }
 const PANE = { title: 'RESCENE', isFocused: true, bodyColumns: 30, placement: 'inline', scroll: { offset: 0, bodyRows: 30 }, view: {} } as const
 
-test('rejected prompt must not consume the changed cast', async ($, on) => {
+test('rejected prompt must not consume the changed cast', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   let drop = false
   const sent: string[] = []
@@ -36,7 +39,7 @@ test('rejected prompt must not consume the changed cast', async ($, on) => {
   expect(sent[2]).toContain('[리센느 역할 변경]')
 })
 
-test('task slash commands must retain the selected recipient', async ($, on) => {
+test('task slash commands must retain the selected recipient', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   let sent = ''
   on('prompt.submit', ($, e) => { sent = (e.context ?? []).join('\n'); return { text: e.text } })
@@ -45,7 +48,7 @@ test('task slash commands must retain the selected recipient', async ($, on) => 
   expect(sent).toContain('맡기지 않고 주 세션이 직접 처리한다')
 })
 
-test('failed persistence must not replace a live cast with defaults on reload', async ($, on) => {
+test('failed persistence must not replace a live cast with defaults on reload', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const state = observe(on)
   on('store.set', () => { throw new Error('disk full') })
@@ -69,7 +72,7 @@ const drawnCells = (node: any): number => {
   return node.type === 'Box' ? inner + Number(node.props.gap ?? 0) * Math.max(0, kids.length - 1) : inner
 }
 
-test('the rows of names and of usage fit the width they are given, however narrow, drawn in full or small', async ($, on) => {
+test('the rows of names and of usage fit the width they are given, however narrow, drawn in full or small', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   on('session.measure', ($, e) => ({ changed: e.changed }))
   await $.session.measure({ context: { window: 200000, percent: 20 }, rateLimits: [{ kind: 'five_hour', percentUsed: 20 }, { kind: 'seven_day', percentUsed: 9 }], cost: { usd: 12.5 }, changed: ['context', 'rateLimits'] })
@@ -86,7 +89,7 @@ test('the rows of names and of usage fit the width they are given, however narro
   }
 })
 
-test('a backstage too narrow for the names offers only the way back, and says so', async ($, on) => {
+test('a backstage too narrow for the names offers only the way back, and says so', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   await $.command.run({ command: 'rescene', args: '리브', ...RUN })
@@ -98,7 +101,7 @@ test('a backstage too narrow for the names offers only the way back, and says so
   await pane.unmount()
 })
 
-test('denied agent tool must not enter history as completed', async ($, on) => {
+test('denied agent tool must not enter history as completed', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const state = observe(on)
   on('agent.spawn', () => ({ model: 'm', agentId: 'agent-a' } as any))
@@ -111,7 +114,7 @@ test('denied agent tool must not enter history as completed', async ($, on) => {
   expect(tasks[0]?.trail?.[0]?.text).toContain('거절')
 })
 
-test('one member does not receive votes for another member saying the same line', async ($, on) => {
+test('one member does not receive votes for another member saying the same line', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const state = observe(on)
   let id = 0
@@ -127,7 +130,7 @@ test('one member does not receive votes for another member saying the same line'
   expect(cup.filter(line => line.quote === '미음').map(line => [line.member, line.count])).toEqual([['may', 1], ['woni', 1]])
 })
 
-test('fresh idle usage speech must expire after linger time', async ($, on) => {
+test('fresh idle usage speech must expire after linger time', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = observe(on)
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -147,7 +150,7 @@ test('fresh idle usage speech must expire after linger time', async ($, on) => {
   expect(now - (said?.at ?? 0)).toBeGreaterThanOrEqual(45000)
 })
 
-test('inspect state calls for a normal tool and render', async ($, on) => {
+test('inspect state calls for a normal tool and render', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   let reads = 0, writes = 0
   on('state.get', async ($, e, next) => { reads++; return next(e) })
@@ -160,7 +163,7 @@ test('inspect state calls for a normal tool and render', async ($, on) => {
   expect({ reads, writes }).toEqual({ reads: 6, writes: 3 })
   reads = 0; writes = 0
   const band = await $.ui.mount({ plugin: 'rescene', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 100 } })
-  expect({ reads, writes }).toEqual({ reads: 21, writes: 0 })
+  expect({ reads, writes }).toEqual({ reads: 22, writes: 0 })
   await band.unmount()
 })
 
@@ -169,7 +172,7 @@ test('corrupt saved cast falls back to a complete default mapping', () => {
   expect(castOf(recast(CAST, 'liv', '구현'))).toEqual({ 구현: 'liv', 검토: 'minami', 조사: 'may', 탐색: 'zena' })
 })
 
-test('changing roles preserves an already assigned task', async ($, on) => {
+test('changing roles preserves an already assigned task', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const state = observe(on)
   on('agent.spawn', () => ({ model: 'm', agentId: 'active' }))
@@ -181,7 +184,7 @@ test('changing roles preserves an already assigned task', async ($, on) => {
   expect((state.tasks as Task[])[0]).toMatchObject({ member: 'minami', role: '구현', status: 'running' })
 })
 
-test('tool and prompt pass through a state read exception', async ($, on) => {
+test('tool and prompt pass through a state read exception', KO, async ($, on) => {
   let toolCalls = 0, prompts = 0
   on('state.get', () => { throw new Error('simulated state failure') })
   on('tool.call', () => { toolCalls++; return { result: { content: 'ok' } } })
@@ -191,7 +194,7 @@ test('tool and prompt pass through a state read exception', async ($, on) => {
   expect({ toolCalls, prompts }).toEqual({ toolCalls: 1, prompts: 1 })
 })
 
-test('late fleet completion must remain silent after off', async ($, on) => {
+test('late fleet completion must remain silent after off', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   let release = (): void => undefined
   let entered = false
@@ -214,7 +217,7 @@ test('late fleet completion must remain silent after off', async ($, on) => {
   expect(toasts).toEqual([])
 })
 
-test('a band drawn small is two rows at work (the stage, the names) and one at rest', { options: { bandStyle: 'compact' } }, async ($, on) => {
+test('a band drawn small is two rows at work (the stage, the names) and one at rest', { options: { language: 'ko', bandStyle: 'compact' } }, async ($, on) => {
   mock.clock(on, { now: 1000 })
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
@@ -231,7 +234,7 @@ test('a band drawn small is two rows at work (the stage, the names) and one at r
   await band.unmount()
 })
 
-test('usage band distinguishes remaining context from used quota', async ($, on) => {
+test('usage band distinguishes remaining context from used quota', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   on('session.measure', ($, e) => ({ changed: e.changed }))
   await $.session.measure({ context: { window: 200000, percent: 20 }, rateLimits: [{ kind: 'five_hour', percentUsed: 20 }], changed: ['context', 'rateLimits'] })

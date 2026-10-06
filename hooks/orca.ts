@@ -2,6 +2,7 @@
 // command: the Orca worker launches the conductor makes through Bash.
 
 import type { Tokens } from '../types'
+import { t } from './lang'
 
 export type FleetRun = {
   profile: string
@@ -234,8 +235,8 @@ export const readMeta = (text: string): Meta | undefined => {
     // A meta file with no exit code is one still being written.
     if (typeof code !== 'number' || !Number.isFinite(code)) return undefined
     const isOk = code === 0
-    const took = typeof seconds === 'number' ? `${Math.round(seconds)}초` : ''
-    const how = isOk ? '' : typeof status === 'string' ? status : `종료 코드 ${String(code)}`
+    const took = typeof seconds === 'number' ? t(`${Math.round(seconds)}초`, `${Math.round(seconds)}s`) : ''
+    const how = isOk ? '' : typeof status === 'string' ? status : t(`종료 코드 ${String(code)}`, `exit code ${String(code)}`)
     const note = [typeof model === 'string' ? model : '', took, how].filter(part => part !== '').join(' · ')
 
     return { isOk, note, tokens: readTokens(usage) }

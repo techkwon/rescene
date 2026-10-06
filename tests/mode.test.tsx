@@ -1,6 +1,9 @@
 import type { AgentSpawnInput } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+// The texts these tests read are the Korean ones: the language is pinned, whatever the machine's own.
+const KO = { options: { language: 'ko' } }
+
 const SPAWN: AgentSpawnInput = {
   tool_use_id: 'toolu_1',
   prompt: '로그인 폼을 고쳐 줘.',
@@ -15,7 +18,7 @@ const SPAWN: AgentSpawnInput = {
 const BAND = { hasSurvey: false, isWorking: true, maxRows: 3, bodyColumns: 100, scroll: { offset: 0, bodyRows: 3 }, view: {} }
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 
-test('a spawned subagent is handed to a member, who is told how to report', async ($, on) => {
+test('a spawned subagent is handed to a member, who is told how to report', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const seen: AgentSpawnInput[] = []
 
@@ -43,7 +46,7 @@ test('a spawned subagent is handed to a member, who is told how to report', asyn
   await band.unmount()
 })
 
-test("a member's turn ending ends her task, with what it cost", async ($, on) => {
+test("a member's turn ending ends her task, with what it cost", KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
 
   on('agent.spawn', () => ({ model: 'claude-sonnet-5-5', agentId: 'agent_1' }))
@@ -86,7 +89,7 @@ test("a member's turn ending ends her task, with what it cost", async ($, on) =>
   await pane.unmount()
 })
 
-test('the main loop is told it conducts as 원이, until the mode is off', async ($, on) => {
+test('the main loop is told it conducts as 원이, until the mode is off', KO, async ($, on) => {
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude Code.', scope: 'shared' }] }))
 
   const facts = { model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', surfaces: ['terminal'], tools: ['Agent'], outputStyle: null, traits: [] } as const
@@ -101,7 +104,7 @@ test('the main loop is told it conducts as 원이, until the mode is off', async
   await $.command.run({ command: 'rescene', args: 'on', ...RUN })
 })
 
-test('an Orca worker is handed to a member, voiced through a copy of its spec, and ended by its meta file', async ($, on) => {
+test('an Orca worker is handed to a member, voiced through a copy of its spec, and ended by its meta file', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 5000 })
   const files = new Map<string, string>([['/w/runs/a/find.spec.md', '# 작업지시\n설정 파일을 찾는다.']])
   const ran: string[] = []
@@ -158,7 +161,7 @@ test('an Orca worker is handed to a member, voiced through a copy of its spec, a
   expect(after.text).toContain('💜 제나: 입력 5.5만 · 캐시 19.5만 · 출력 1.1천')
 })
 
-test('a pane with little room draws two rows a member, and a roomy one her framed card', async ($, on) => {
+test('a pane with little room draws two rows a member, and a roomy one her framed card', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const props = { title: 'RESCENE', isFocused: false, bodyColumns: 44, placement: 'inline', scroll: { offset: 0, bodyRows: 14 }, view: {} } as const
   const slim = await $.ui.mount({ plugin: 'rescene', surface: 'terminal', component: 'Pane', requestId: 'rescene', props })
@@ -176,7 +179,7 @@ test('a pane with little room draws two rows a member, and a roomy one her frame
   await plain.unmount()
 })
 
-test('the main loop is told beside the first typed prompt that it conducts, once, and told when the mode goes off', async ($, on) => {
+test('the main loop is told beside the first typed prompt that it conducts, once, and told when the mode goes off', KO, async ($, on) => {
   const seen: (readonly string[] | undefined)[] = []
 
   on('prompt.submit', ($, e) => {
@@ -200,7 +203,7 @@ test('the main loop is told beside the first typed prompt that it conducts, once
   await $.command.run({ command: 'rescene', args: 'on', ...RUN })
 })
 
-test('the beat ends a member the engine lists as done, and has a slow one say so', async ($, on) => {
+test('the beat ends a member the engine lists as done, and has a slow one say so', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const listed = [{ id: 'agent_1', description: '💙 미나미 · 로그인 폼 구현', type: 'general-purpose', status: 'running' as 'running' | 'completed' }]
   const opened: string[] = []
@@ -251,7 +254,7 @@ test('the beat ends a member the engine lists as done, and has a slow one say so
 
 const PANE = { title: 'RESCENE', isFocused: false, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 52 }, view: {} } as const
 
-test("the main session's own tool calls show on the card of the member whose kind of work they are", async ($, on) => {
+test("the main session's own tool calls show on the card of the member whose kind of work they are", KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   let release = (): void => undefined
 
@@ -299,7 +302,7 @@ test("the main session's own tool calls show on the card of the member whose kin
   await after.unmount()
 })
 
-test('the icons of the members at work move, and one whose task ended well hops, then stands still', async ($, on) => {
+test('the icons of the members at work move, and one whose task ended well hops, then stands still', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const painted: { key: string; cells: string }[] = []
 
@@ -343,7 +346,7 @@ test('the icons of the members at work move, and one whose task ended well hops,
   await rested.unmount()
 })
 
-test('a command that only mentions a launch reserves nobody, and one that writes its spec first does', async ($, on) => {
+test('a command that only mentions a launch reserves nobody, and one that writes its spec first does', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   mock.env(on, { HOME: '/home/me' })
   on('fs.read', () => {
@@ -369,7 +372,7 @@ test('a command that only mentions a launch reserves nobody, and one that writes
   expect(made.context?.join('\n')).toContain('"new" 작업은 제나(탐색)가 맡았다.')
 })
 
-test('of two calls running at once the card keeps the one still running, and off mid-turn clears the stage', async ($, on) => {
+test('of two calls running at once the card keeps the one still running, and off mid-turn clears the stage', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const releases = new Map<string, () => void>()
 
@@ -410,7 +413,7 @@ test('of two calls running at once the card keeps the one still running, and off
   expect(after.text).toContain('💚 원이 (지휘) ○ 대기')
 })
 
-test('a tool call with no turn start seen still shows 원이 conducting, and a message typed mid-turn becomes the ask', async ($, on) => {
+test('a tool call with no turn start seen still shows 원이 conducting, and a message typed mid-turn becomes the ask', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
 
   on('ui.blit', () => ({ value: {} }))
@@ -434,7 +437,7 @@ test('a tool call with no turn start seen still shows 원이 conducting, and a m
   await after.unmount()
 })
 
-test('a moment in the session gets its line once: the limit nearly spent, the same file read again and again', async ($, on) => {
+test('a moment in the session gets its line once: the limit nearly spent, the same file read again and again', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const toasts: string[] = []
   let percentUsed = 82
@@ -469,7 +472,7 @@ test('a moment in the session gets its line once: the limit nearly spent, the sa
   expect(toasts.filter(text => text.includes('그만 좀 봅시다.'))).toEqual(['💚 원이 “와 이래 많이 봅니까, 우리? 그만 좀 봅시다.” view.tsx, 이번 턴에만 5번째 읽어요'])
 })
 
-test('every line said is a vote in the 명대사 월드컵, and /rescene cup ranks them', async ($, on) => {
+test('every line said is a vote in the 명대사 월드컵, and /rescene cup ranks them', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   let spawned = 0
 
@@ -495,7 +498,7 @@ test('every line said is a vote in the 명대사 월드컵, and /rescene cup ran
 
 const DOCK = { title: 'RESCENE', isFocused: false, bodyColumns: 72, placement: 'dock', scroll: { offset: 0, bodyRows: 52 }, view: {} } as const
 
-test("a press on a member's name opens her backstage: what she was told, what she did, what she handed back", async ($, on) => {
+test("a press on a member's name opens her backstage: what she was told, what she did, what she handed back", KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
 
   on('agent.spawn', () => ({ model: 'claude-sonnet-5-5', agentId: 'agent_1' }))
@@ -545,7 +548,7 @@ test("a press on a member's name opens her backstage: what she was told, what sh
   await pane.unmount()
 })
 
-test('the band names who takes the next prompt: a press picks her, and the prompt is handed to her', async ($, on) => {
+test('the band names who takes the next prompt: a press picks her, and the prompt is handed to her', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const sent: { text: string; context?: readonly string[] }[] = []
 
@@ -607,7 +610,7 @@ test('the band names who takes the next prompt: a press picks her, and the promp
   await band.unmount()
 })
 
-test("on a light theme the members' colors are drawn deeper, and a change of theme is followed from the next prompt", async ($, on) => {
+test("on a light theme the members' colors are drawn deeper, and a change of theme is followed from the next prompt", KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   let theme = 'light'
 
@@ -638,7 +641,7 @@ test("on a light theme the members' colors are drawn deeper, and a change of the
   await pane.unmount()
 })
 
-test('a tool call refused or failed is not shown as done, and one that ends after the mode went off leaves nothing behind', async ($, on) => {
+test('a tool call refused or failed is not shown as done, and one that ends after the mode went off leaves nothing behind', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const gates: (() => void)[] = []
 
@@ -673,7 +676,7 @@ test('a tool call refused or failed is not shown as done, and one that ends afte
   await pane.unmount()
 })
 
-test('a list of agents that could not be read ends nobody, and a guessed ending gives way to the report', async ($, on) => {
+test('a list of agents that could not be read ends nobody, and a guessed ending gives way to the report', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   let listing: 'fails' | 'empty' = 'fails'
 
@@ -707,7 +710,7 @@ test('a list of agents that could not be read ends nobody, and a guessed ending 
   expect(told).toContain('API 오류')
 })
 
-test('tasks at work outlast the history kept, and what cleared tasks cost stays counted', async ($, on) => {
+test('tasks at work outlast the history kept, and what cleared tasks cost stays counted', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   let spawned = 0
 
@@ -740,7 +743,7 @@ test('tasks at work outlast the history kept, and what cleared tasks cost stays 
   expect((await $.command.run({ command: 'rescene', args: 'usage', ...RUN })).text).toContain('미나미: 입력 4.4만')
 })
 
-test("asked to, a launch that is one plain step keeps the worker's screen for her backstage, and any other is run as written", { options: { keepScreen: true } }, async ($, on) => {
+test("asked to, a launch that is one plain step keeps the worker's screen for her backstage, and any other is run as written", { options: { language: 'ko', keepScreen: true } }, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const ran: string[] = []
   const files: Record<string, string> = { '/w/runs/a/audit.spec.md': '# 코드 점검\n대상: hooks' }
@@ -791,7 +794,7 @@ test("asked to, a launch that is one plain step keeps the worker's screen for he
   expect(ran[1]).not.toContain('tee')
 })
 
-test('the roles are the person\'s to set: a press or a command gives a member a kind of work, kept between sessions, and 자동 gives each her own back', async ($, on) => {
+test('the roles are the person\'s to set: a press or a command gives a member a kind of work, kept between sessions, and 자동 gives each her own back', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   const kept: Record<string, unknown> = {}
   const sent: { text: string; context?: readonly string[] }[] = []
@@ -879,7 +882,7 @@ test('the roles are the person\'s to set: a press or a command gives a member a 
   await pane.unmount()
 })
 
-test('a cast kept from a session before is the one this session starts with', async ($, on) => {
+test('a cast kept from a session before is the one this session starts with', KO, async ($, on) => {
   mock.clock(on, { now: 1000 })
   on('store.get', () => ({ value: { 구현: 'zena', 검토: 'liv', 조사: 'may', 탐색: 'minami' } }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -895,7 +898,7 @@ test('a cast kept from a session before is the one this session starts with', as
   expect(shown).toContain('구현 💜 제나')
 })
 
-test("a worker launched in an Orca terminal of its own has its screen read: what it is on shows on her card and in her backstage", async ($, on) => {
+test("a worker launched in an Orca terminal of its own has its screen read: what it is on shows on her card and in her backstage", KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const files: Record<string, string> = { '/w/runs/a/audit.spec.md': '# 코드 점검' }
   const asked: string[][] = []

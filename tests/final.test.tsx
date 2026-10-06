@@ -3,6 +3,9 @@ import type { On } from 'claude-code'
 import type { Task } from '../types'
 import { expect, mock, test } from 'claude-code/testing'
 
+// The texts these tests read are the Korean ones: the language is pinned, whatever the machine's own.
+const KO = { options: { language: 'ko' } }
+
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 const SUBMIT = { wait: false, origin: { kind: 'composer' } } as const
 const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
@@ -35,7 +38,7 @@ const filesOf = (on: On, shell = '/bin/zsh') => {
 const result = (stdout = '▸ 실행: rg hooks', exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const launched = (stdout = '{"ok":true,"result":{"terminal":{"handle":"term_good"}}}') => ({ result: { stdout, stderr: '' } })
 
-test('redirected create cannot authenticate another printed handle', async ($, on) => {
+test('redirected create cannot authenticate another printed handle', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on)
   const asked: string[][] = []
   on('process.run', ($, e) => { asked.push([...e.argv]); return result() })
@@ -46,7 +49,7 @@ test('redirected create cannot authenticate another printed handle', async ($, o
   expect(asked.length).toBe(0)
 })
 
-test('a failing output filter does not mean terminal creation failed', async ($, on) => {
+test('a failing output filter does not mean terminal creation failed', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); const files = filesOf(on); const state = observe(on)
   on('tool.call', () => ({ ...launched(''), isError: true as const }))
   await $.session.start(START)
@@ -56,7 +59,7 @@ test('a failing output filter does not mean terminal creation failed', async ($,
   expect((state.tasks as Task[])[0]?.status).toBe('done')
 })
 
-test('stat failures invalidate the last live-file activity', { options: { keepScreen: true } }, async ($, on) => {
+test('stat failures invalidate the last live-file activity', { options: { language: 'ko', keepScreen: true } }, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); const files = filesOf(on); const state = observe(on)
   files['/w/o.md.live.log'] = '▸ 실행: old activity'
   on('tool.call', () => launched(''))
@@ -69,7 +72,7 @@ test('stat failures invalidate the last live-file activity', { options: { keepSc
   expect((state.tasks as Task[])[0]?.detail).toBeUndefined()
 })
 
-test('waiting worker is not polled through backstage', async ($, on) => {
+test('waiting worker is not polled through backstage', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   let calls = 0
   on('process.run', () => { calls++; return result() })
@@ -83,7 +86,7 @@ test('waiting worker is not polled through backstage', async ($, on) => {
   expect(calls).toBe(0)
 })
 
-test('a new terminal using the same task id must not reuse its predecessor screen', async ($, on) => {
+test('a new terminal using the same task id must not reuse its predecessor screen', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   let handle = 'term_old'
   on('tool.call', () => launched(`{"handle":"${handle}"}`))
@@ -99,7 +102,7 @@ test('a new terminal using the same task id must not reuse its predecessor scree
   expect((state.peek as {lines: string[]}).lines.join('\n')).toContain('term_new')
 })
 
-test('off while startup reads isOn must win after the read resolves', async ($, on) => {
+test('off while startup reads isOn must win after the read resolves', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on, ['toast']); filesOf(on)
   let releaseTool = () => {}; let releaseRead = () => {}; let pause = false; let captured = false
   const toasts: unknown[] = []
@@ -125,7 +128,7 @@ test('off while startup reads isOn must win after the read resolves', async ($, 
   expect(toasts.length).toBe(0)
 })
 
-test('statusline generation is work for the selected recipient', async ($, on) => {
+test('statusline generation is work for the selected recipient', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on)
   let sent = ''
   on('prompt.submit', ($, e) => { sent = (e.context ?? []).join('\n'); return { text: e.text } })
@@ -134,7 +137,7 @@ test('statusline generation is work for the selected recipient', async ($, on) =
   expect(sent).toContain('맡기지 않고 주 세션이 직접 처리한다')
 })
 
-test('local control voice off is not work for a recipient', async ($, on) => {
+test('local control voice off is not work for a recipient', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on)
   let sent = ''
   on('prompt.submit', ($, e) => { sent = (e.context ?? []).join('\n'); return { text: e.text } })
@@ -143,7 +146,7 @@ test('local control voice off is not work for a recipient', async ($, on) => {
   expect(sent).not.toContain('맡기지 않고 주 세션이 직접 처리한다')
 })
 
-test('who is on stage is said once on the card of the member who conducts', async ($, on) => {
+test('who is on stage is said once on the card of the member who conducts', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on)
   on('process.run', () => result())
   on('tool.call', () => launched())
@@ -158,7 +161,7 @@ test('who is on stage is said once on the card of the member who conducts', asyn
   await pane.unmount()
 })
 
-test("a member's hand-back of her report reads as a report in her record, not as a tool's name", async ($, on) => {
+test("a member's hand-back of her report reads as a report in her record, not as a tool's name", KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on); const state = observe(on)
   on('agent.spawn', () => ({ model: 'm', agentId: 'agent-a' } as any))
   on('tool.call', () => ({ result: 'ok' } as any))

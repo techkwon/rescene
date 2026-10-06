@@ -1,6 +1,13 @@
 {
   "name": "rescene",
-  "description": "리센느(RESCENE) 팬 모드: 원이가 지휘하고 멤버들이 일을 맡아 보고하는 Claude Code 모드",
-  "owner": { "name": "techkwon" },
-  "plugins": [{ "name": "rescene", "source": "./" }]
+  "description": "RESCENE fan mod for Claude Code: WONI conducts, the members take the tasks. Korean and English. 리센느(RESCENE) 팬 모드.",
+  "owner": {
+    "name": "techkwon"
+  },
+  "plugins": [
+    {
+      "name": "rescene",
+      "source": "./"
+    }
+  ]
 }

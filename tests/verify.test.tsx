@@ -5,6 +5,9 @@ import { expect, mock, test } from 'claude-code/testing'
 import { CAST, recast } from '../hooks/members'
 import { doingOf } from '../hooks/voice'
 
+// The texts these tests read are the Korean ones: the language is pinned, whatever the machine's own.
+const KO = { options: { language: 'ko' } }
+
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } } as const
 const SUBMIT = { wait: false, origin: { kind: 'composer' } } as const
 const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
@@ -38,7 +41,7 @@ const filesOf = (on: On, shell = '/bin/zsh') => {
 const result = (stdout = '▸ 실행: rg hooks', exitCode = 0) => ({ value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } })
 const launched = (stdout = '{"ok":true,"result":{"terminal":{"handle":"term_good"}}}') => ({ result: { stdout, stderr: '' } })
 
-test('accepted prompt survives completion bookkeeping failure exactly once', async ($, on) => {
+test('accepted prompt survives completion bookkeeping failure exactly once', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on)
   let calls = 0
   on('state.set', { plugin: 'rescene', key: 'briefed' }, () => { throw Error('write fails') })
@@ -47,7 +50,7 @@ test('accepted prompt survives completion bookkeeping failure exactly once', asy
   expect(calls).toBe(1)
 })
 
-test('role changed while prompt enters is told on next prompt', async ($, on) => {
+test('role changed while prompt enters is told on next prompt', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on)
   const sent: string[] = []; let pause = false; let release = () => {}
   on('prompt.submit', ($, e) => {
@@ -66,7 +69,7 @@ test('role changed while prompt enters is told on next prompt', async ($, on) =>
   expect(sent[2]).toContain('[리센느 역할 변경]')
 })
 
-test('off during first prompt admission must preserve stand-down notice', async ($, on) => {
+test('off during first prompt admission must preserve stand-down notice', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on)
   const sent: string[] = []; let release = () => {}
   on('prompt.submit', ($, e) => {
@@ -82,7 +85,7 @@ test('off during first prompt admission must preserve stand-down notice', async 
   expect(sent[1]).toContain('리센느 모드가 꺼졌다')
 })
 
-test('slash controls with arguments must not receive a work delegation', async ($, on) => {
+test('slash controls with arguments must not receive a work delegation', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on)
   const sent: string[] = []
   on('prompt.submit', ($, e) => { sent.push((e.context ?? []).join('\n')); return { text: e.text } })
@@ -91,7 +94,7 @@ test('slash controls with arguments must not receive a work delegation', async (
   expect(sent.filter(text => text.includes('맡기지 않고 주 세션이 직접 처리한다')).length).toBe(0)
 })
 
-test('role auto after failed initial load must not restore stale stored roles', async ($, on) => {
+test('role auto after failed initial load must not restore stale stored roles', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on, ['store']); const state = observe(on)
   let fails = true
   on('store.get', () => { if (fails) throw Error('temporarily unavailable'); return { value: recast(CAST, 'liv', '구현') } })
@@ -102,7 +105,7 @@ test('role auto after failed initial load must not restore stale stored roles', 
   expect((state.cast as Cast | undefined)?.구현 ?? CAST.구현).toBe('minami')
 })
 
-test('role auto after custom initial load survives reload', async ($, on) => {
+test('role auto after custom initial load survives reload', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on, ['store']); const state = observe(on)
   on('store.get', () => ({ value: recast(CAST, 'liv', '구현') }))
   await $.session.start(START)
@@ -111,7 +114,7 @@ test('role auto after custom initial load survives reload', async ($, on) => {
   expect((state.cast as Cast).구현).toBe('minami')
 })
 
-test('asked to keep the screen, the wrapper leaves a path with a space alone and keeps the background flag', { options: { keepScreen: true } }, async ($, on) => {
+test('asked to keep the screen, the wrapper leaves a path with a space alone and keeps the background flag', { options: { language: 'ko', keepScreen: true } }, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on); filesOf(on)
   const ran: {command: string; bg: boolean | undefined}[] = []
   on('tool.call', ($, e) => { if (e.tool === 'Bash') ran.push({command: e.command, bg: e.run_in_background}); return launched('') })
@@ -122,7 +125,7 @@ test('asked to keep the screen, the wrapper leaves a path with a space alone and
   expect(ran.map(x => x.bg)).toEqual([true, true])
 })
 
-test('a shell that is neither bash nor zsh is not given the wrapper, asked or not', { options: { keepScreen: true } }, async ($, on) => {
+test('a shell that is neither bash nor zsh is not given the wrapper, asked or not', { options: { language: 'ko', keepScreen: true } }, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on); filesOf(on, '/bin/fish')
   let command = ''
   on('tool.call', ($, e) => { if (e.tool === 'Bash') command = e.command; return launched('') })
@@ -130,7 +133,7 @@ test('a shell that is neither bash nor zsh is not given the wrapper, asked or no
   expect(command).not.toContain('tee')
 })
 
-test('denied fleet call from agent must amend its history', async ($, on) => {
+test('denied fleet call from agent must amend its history', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   on('agent.spawn', () => ({ model: 'm', agentId: 'agent-a' } as any))
   on('tool.call', () => ({ deny: 'denied' }))
@@ -139,7 +142,7 @@ test('denied fleet call from agent must amend its history', async ($, on) => {
   expect((state.tasks as Task[]).find(x => x.id === 'agent-a')?.trail?.[0]?.text).toContain('거절')
 })
 
-test('off then on permits late completion notification', async ($, on) => {
+test('off then on permits late completion notification', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on, ['toast']); filesOf(on)
   let release = () => {}; const toasts: unknown[] = []
   on('ui.toast', ($, e) => { toasts.push(e); return { value: undefined } })
@@ -152,7 +155,7 @@ test('off then on permits late completion notification', async ($, on) => {
   expect(toasts.length).toBeGreaterThanOrEqual(1)
 })
 
-test('two terminals opened by one command: nothing says which answer is whose, so neither screen is read', async ($, on) => {
+test('two terminals opened by one command: nothing says which answer is whose, so neither screen is read', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on)
   const asked: string[][] = []
   on('process.run', ($, e) => { asked.push([...e.argv]); return result() })
@@ -163,7 +166,7 @@ test('two terminals opened by one command: nothing says which answer is whose, s
   expect(asked.length).toBe(0)
 })
 
-test('unrelated background stdout must not be a terminal handle', async ($, on) => {
+test('unrelated background stdout must not be a terminal handle', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   on('tool.call', () => launched('{"handle":"term_unrelated"}'))
   on('process.run', () => result())
@@ -172,7 +175,7 @@ test('unrelated background stdout must not be a terminal handle', async ($, on) 
   expect((state.tasks as Task[])[0]?.term).toBeUndefined()
 })
 
-test('focused worker shares six-second screen read budget', async ($, on) => {
+test('focused worker shares six-second screen read budget', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on)
   const asked: string[][] = []
   on('process.run', ($, e) => { asked.push([...e.argv]); return result() })
@@ -187,7 +190,7 @@ test('focused worker shares six-second screen read budget', async ($, on) => {
   expect(asked.length).toBeLessThanOrEqual(10)
 })
 
-test('normal worker stops polling after confirmed completion', async ($, on) => {
+test('normal worker stops polling after confirmed completion', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); const files = filesOf(on); const state = observe(on)
   let calls = 0
   on('process.run', () => { calls++; return result() })
@@ -203,7 +206,7 @@ test('normal worker stops polling after confirmed completion', async ($, on) => 
   expect(calls).toBe(0)
 })
 
-test('process failures do not preserve stale current activity', async ($, on) => {
+test('process failures do not preserve stale current activity', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   let failed = false
   on('process.run', () => result(failed ? '' : '▸ 실행: first task', failed ? 1 : 0))
@@ -216,7 +219,7 @@ test('process failures do not preserve stale current activity', async ($, on) =>
   expect((state.tasks as Task[])[0]?.detail).not.toContain('first task')
 })
 
-test('failed terminal launch is not tracked as a running worker', async ($, on) => {
+test('failed terminal launch is not tracked as a running worker', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   on('tool.call', () => ({ ...launched(''), isError: true as const }))
   on('process.run', () => result())
@@ -232,11 +235,14 @@ test('doingOf handles blank, shell prefixes and long outputs', () => {
   expect(doingOf(['x'.repeat(500)]).length).toBe(120)
 })
 
-test('startup overlapping off must not re-enable completion notifications', async ($, on) => {
+test('startup overlapping off must not re-enable completion notifications', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on, ['toast', 'store']); filesOf(on)
   let releaseTool = () => {}; let releaseStore = () => {}; const toasts: unknown[] = []
   on('ui.toast', ($, e) => { toasts.push(e); return { value: undefined } })
-  on('store.get', () => new Promise<{value: undefined}>(resolve => { releaseStore = () => resolve({value: undefined}) }))
+  // The store answers nothing until it is released: every read made before then waits, and those after are answered at once.
+  let isReleased = false; const waiting: (() => void)[] = []
+  on('store.get', () => new Promise<{value: undefined}>(resolve => { if (isReleased) resolve({value: undefined}); else waiting.push(() => resolve({value: undefined})) }))
+  releaseStore = () => { isReleased = true; for (const answer of waiting) answer() }
   on('tool.call', () => new Promise<ReturnType<typeof launched>>(resolve => { releaseTool = () => resolve(launched('')) }))
   const tool = $.tool.call({ tool: 'Bash', command: 'fleet-run codex-hard --spec /w/a.md' })
   await clock.settle()
@@ -248,7 +254,7 @@ test('startup overlapping off must not re-enable completion notifications', asyn
   expect(toasts.length).toBe(0)
 })
 
-test('usage expiry assertion has a real warning to expire', async ($, on) => {
+test('usage expiry assertion has a real warning to expire', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); const state = observe(on)
   on('session.measure', ($, e) => ({ changed: e.changed }))
   await $.session.start(START)
@@ -261,7 +267,7 @@ test('usage expiry assertion has a real warning to expire', async ($, on) => {
   expect((state.now as number) - (state.ticker as {at: number}).at).toBeGreaterThanOrEqual(45000)
 })
 
-test('unasked, a launch is run exactly as the person wrote it', async ($, on) => {
+test('unasked, a launch is run exactly as the person wrote it', KO, async ($, on) => {
   mock.clock(on, { now: 1000 }); common(on); filesOf(on)
   const ran: string[] = []
   on('tool.call', ($, e) => { if (e.tool === 'Bash') ran.push(e.command); return launched('') })
@@ -269,7 +275,7 @@ test('unasked, a launch is run exactly as the person wrote it', async ($, on) =>
   expect(ran).toEqual(['fleet-run codex-hard --spec /w/a.md --out /w/o.md'])
 })
 
-test("a call open across a reload is kept while a turn is under way, and closed by its own end or the turn's", async ($, on) => {
+test("a call open across a reload is kept while a turn is under way, and closed by its own end or the turn's", KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); const state = observe(on)
   let release = () => {}
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
@@ -294,7 +300,7 @@ test("a call open across a reload is kept while a turn is under way, and closed 
   expect(open()).toBe(0)
 })
 
-test('the launch as the fleet skill writes it (titled, more steps inside the quotes, the handle picked out by grep) is read by its own handle', async ($, on) => {
+test('the launch as the fleet skill writes it (titled, more steps inside the quotes, the handle picked out by grep) is read by its own handle', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   const asked: string[][] = []
   on('process.run', ($, e) => { asked.push([...e.argv]); return result('  ▸ 실행: /bin/zsh -lc "rg -n register hooks"\n  … 2분 경과') })
@@ -306,7 +312,7 @@ test('the launch as the fleet skill writes it (titled, more steps inside the quo
   expect((state.tasks as Task[])[0]?.detail).toBe('실행: rg -n register hooks')
 })
 
-test('a terminal that the command says it could not open leaves no worker waiting, and one opened beside steps run at once is not read by a guess', async ($, on) => {
+test('a terminal that the command says it could not open leaves no worker waiting, and one opened beside steps run at once is not read by a guess', KO, async ($, on) => {
   const clock = mock.clock(on, { now: 1000 }); common(on); filesOf(on); const state = observe(on)
   const asked: string[][] = []
   let printed = '{"ok":false,"error":"no such worktree"}'

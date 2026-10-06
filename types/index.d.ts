@@ -148,6 +148,8 @@ declare module 'claude-code' {
       target: MemberId | null
       /** The terminal's theme is a light one: the members' colors are drawn deeper. */
       isLight: boolean
+      /** The language in use, once the session has settled it. */
+      lang: 'ko' | 'en' | null
       /** Who has which kind of work. */
       cast: Cast
       /** The pane shows the screen the roles are set on. */

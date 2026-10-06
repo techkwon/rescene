@@ -1,5 +1,6 @@
 import type { Cast, MemberId, Role } from '../types'
 
+import { t } from './lang'
 import { CAST } from './members'
 
 // Says a tool call in plain words (what is being done, and to what), and
@@ -67,44 +68,44 @@ export const actionOf = (tool: string, input: object, cast: Cast = CAST): Action
 
   switch (tool) {
     case 'Read':
-      return say('탐색', `읽는 중: ${file}`, `읽음: ${file}`)
+      return say('탐색', t(`읽는 중: ${file}`, `Reading: ${file}`), t(`읽음: ${file}`, `Read: ${file}`))
     case 'Grep':
     case 'Glob':
-      return say('탐색', `찾는 중: ${text(args, 'pattern')}`, `찾음: ${text(args, 'pattern')}`)
+      return say('탐색', t(`찾는 중: ${text(args, 'pattern')}`, `Searching: ${text(args, 'pattern')}`), t(`찾음: ${text(args, 'pattern')}`, `Searched: ${text(args, 'pattern')}`))
     case 'ToolSearch':
-      return say('탐색', `도구 찾는 중: ${text(args, 'query')}`, `도구 찾음: ${text(args, 'query')}`)
+      return say('탐색', t(`도구 찾는 중: ${text(args, 'query')}`, `Finding a tool: ${text(args, 'query')}`), t(`도구 찾음: ${text(args, 'query')}`, `Found a tool: ${text(args, 'query')}`))
     case 'Edit':
     case 'MultiEdit':
     case 'NotebookEdit':
-      return say('구현', `고치는 중: ${file}`, `고침: ${file}`)
+      return say('구현', t(`고치는 중: ${file}`, `Editing: ${file}`), t(`고침: ${file}`, `Edited: ${file}`))
     case 'Write':
-      return say('구현', `쓰는 중: ${file}`, `씀: ${file}`)
+      return say('구현', t(`쓰는 중: ${file}`, `Writing: ${file}`), t(`씀: ${file}`, `Wrote: ${file}`))
     case 'WebSearch':
-      return say('조사', `검색 중: ${text(args, 'query')}`, `검색함: ${text(args, 'query')}`)
+      return say('조사', t(`검색 중: ${text(args, 'query')}`, `Searching the web: ${text(args, 'query')}`), t(`검색함: ${text(args, 'query')}`, `Searched the web: ${text(args, 'query')}`))
     case 'WebFetch':
-      return say('조사', `웹 읽는 중: ${host(text(args, 'url'))}`, `웹 읽음: ${host(text(args, 'url'))}`)
+      return say('조사', t(`웹 읽는 중: ${host(text(args, 'url'))}`, `Reading the web: ${host(text(args, 'url'))}`), t(`웹 읽음: ${host(text(args, 'url'))}`, `Read the web: ${host(text(args, 'url'))}`))
     case 'Skill':
-      return say('조사', `스킬 여는 중: ${text(args, 'skill')}`, `스킬 엶: ${text(args, 'skill')}`)
+      return say('조사', t(`스킬 여는 중: ${text(args, 'skill')}`, `Opening a skill: ${text(args, 'skill')}`), t(`스킬 엶: ${text(args, 'skill')}`, `Opened a skill: ${text(args, 'skill')}`))
     case 'Bash': {
       const command = text(args, 'command')
       const description = text(args, 'description')
 
-      return say(roleOfShell(command, description), `실행 중: ${description || shown(command)}`, `실행함: ${description || shown(command)}`)
+      return say(roleOfShell(command, description), t(`실행 중: ${description || shown(command)}`, `Running: ${description || shown(command)}`), t(`실행함: ${description || shown(command)}`, `Ran: ${description || shown(command)}`))
     }
     case 'Agent':
-      return say('지휘', `맡기는 중: ${text(args, 'description')}`, `맡김: ${text(args, 'description')}`)
+      return say('지휘', t(`맡기는 중: ${text(args, 'description')}`, `Handing over: ${text(args, 'description')}`), t(`맡김: ${text(args, 'description')}`, `Handed over: ${text(args, 'description')}`))
     case 'AskUserQuestion':
-      return say('지휘', '사용자에게 묻는 중', '사용자에게 물음')
+      return say('지휘', t('사용자에게 묻는 중', 'Asking the person'), t('사용자에게 물음', 'Asked the person'))
     case 'SendMessage':
-      return say('지휘', '멤버에게 말 전하는 중', '멤버에게 말 전함')
+      return say('지휘', t('멤버에게 말 전하는 중', 'Messaging a member'), t('멤버에게 말 전함', 'Messaged a member'))
     case 'SubagentHandback':
-      return say('지휘', '보고 올리는 중', '보고 올림')
+      return say('지휘', t('보고 올리는 중', 'Reporting back'), t('보고 올림', 'Reported back'))
     case 'Artifact':
-      return say('구현', '페이지 만드는 중', '페이지 만듦')
+      return say('구현', t('페이지 만드는 중', 'Making a page'), t('페이지 만듦', 'Made a page'))
     default: {
       const short = tool.startsWith('mcp__') ? tool.slice(tool.lastIndexOf('__') + 2) : tool
 
-      return say(tool.startsWith('mcp__') ? '조사' : '지휘', `${short} 쓰는 중`, `${short} 씀`)
+      return say(tool.startsWith('mcp__') ? '조사' : '지휘', t(`${short} 쓰는 중`, `Using ${short}`), t(`${short} 씀`, `Used ${short}`))
     }
   }
 }

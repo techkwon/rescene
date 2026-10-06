@@ -4,14 +4,16 @@ import type { EngineInterface, Register, Timer } from 'claude-code'
 import type { Cast, Line, Live, MemberId, Role, Said, Task, Tokens, Usage } from '../types'
 
 import { actionOf } from './action'
+import type { Lang } from './lang'
+import { isKorean, langNow, langOf, pinned, runtimeSigns, setLang, t } from './lang'
 
 import type { Moment, WorkRole } from './members'
-import { CAST, castOf, isActive, isSameCast, LEADER, lineOf, MEMBERS, MOMENTS, ORDER, pickMember, recast, roleIn, roleOfAgent, roleOfRun, say } from './members'
+import { CAST, castOf, isActive, isSameCast, LEADER, lineOf, MEMBERS, MOMENTS, nameOf, ORDER, pickMember, recast, roleIn, roleName, roleOfAgent, roleOfRun, say } from './members'
 import { cheerOf, FRAME_MS, frameOf, iconOf } from './sprites'
 import { findFleetRuns, isDetached, isPlainLaunch, readMeta, voicedSpecPath } from './orca'
 import type { Scene } from './view'
 import { backstageLines, castLines, densityOf, drawBand, drawPane, moversOf, plus, rosterLines, shownTask, spoken, usageLines, ZERO } from './view'
-import { aimBlock, askOf, castBlock, doingOf, firstLine, leaderSection, linesOf, memberBlock, namedMember, orcaBlock, soloBlock } from './voice'
+import { aimBlock, askOf, castBlock, doingOf, firstLine, leaderSection, linesOf, MARKS, memberBlock, namedMember, orcaBlock, soloBlock } from './voice'
 
 const PANE = 'rescene'
 const TICK_MS = 2000
@@ -30,9 +32,11 @@ const PEEK_LINES = 40
 const WATCH_MS = 6000
 const PANE_SIZE = { rows: 36, columns: 72 } as const
 const LOST_MS = 3_600_000
-const MARK = '[리센느 멤버 배정]'
+/** Whether a task already ends with a member's block, in either language. */
+const isCast = (text: string): boolean => MARKS.some(mark => text.includes(mark))
 const TYPED = new Set(['composer', 'bridge', 'sdk'])
-const STAND_DOWN = '리센느 모드가 꺼졌다. 지금부터는 원이 말투와 멤버 배정 이야기를 쓰지 않고 평소대로 답한다.'
+const standDown = (): string =>
+  t('리센느 모드가 꺼졌다. 지금부터는 원이 말투와 멤버 배정 이야기를 쓰지 않고 평소대로 답한다.', "RESCENE mode is off. From now on answer as usual, without WONI's voice or any talk of members and casting.")
 
 const isOn = atom({ plugin: 'rescene', key: 'isOn' } as const, true)
 const tasks = atom({ plugin: 'rescene', key: 'tasks' } as const, [])
@@ -61,17 +65,29 @@ const isCasting = atom({ plugin: 'rescene', key: 'isCasting' } as const, false)
 const isRecast = atom({ plugin: 'rescene', key: 'isRecast' } as const, false)
 /** The key the cast is kept under between sessions. */
 const CAST_KEY = 'cast'
+/** The language this session came to, kept across a reload; nothing before it is settled. */
+const lang = atom({ plugin: 'rescene', key: 'lang' } as const, null)
+/** The key a language picked by command is kept under between sessions. */
+const LANG_KEY = 'lang'
 
 type Engine = EngineInterface
 type Draft = Pick<Task, 'id' | 'kind' | 'role' | 'engine' | 'title'> & Pick<Task, 'out' | 'call' | 'brief' | 'live'>
 
-const SPINNER: Record<string, string> = {
+const SPINNER_KO: Record<string, string> = {
   requesting: '원이 큐시트 보는 중',
   thinking: '원이 교통정리 중',
   responding: '원이 멘트 중',
   'tool-input': '원이 작업지시 쓰는 중',
   'tool-use': '원이 지휘 중',
 }
+const SPINNER_EN: Record<string, string> = {
+  requesting: 'WONI reading the cue sheet',
+  thinking: 'WONI directing traffic',
+  responding: 'WONI at the mic',
+  'tool-input': 'WONI writing a brief',
+  'tool-use': 'WONI leading',
+}
+const spinnerOf = (mode: string): string => t(SPINNER_KO, SPINNER_EN)[mode] ?? t(SPINNER_KO.thinking, SPINNER_EN.thinking) ?? ''
 
 const sceneOf = async ($: Engine): Promise<Scene> => {
   const [list, now, wave, led, ticked, used, ledTokens, said, voted, turned, doing, done, shown, peeked, aimed, kept, roles, isSetting] = await Promise.all([
@@ -93,6 +109,8 @@ const sceneOf = async ($: Engine): Promise<Scene> => {
     read($, banked),
     read($, cast),
     read($, isCasting),
+    // Read for the drawing's sake: a change of language draws everything that shows a scene again.
+    read($, lang),
   ])
 
   return { tasks: list, now, waveAt: wave, leader: led, ticker: ticked, usage: used, leaderTokens: ledTokens, feed: said, cup: voted, turn: turned, live: doing, steps: done, focus: shown, peek: peeked, target: aimed, banked: kept, cast: roles, isCasting: isSetting }
@@ -148,7 +166,7 @@ const mark = async ($: Engine, moment: Moment, note: string): Promise<void> => {
   const { member, quote } = MOMENTS[moment]
 
   await speak($, { member, quote, note, at: await $.clock.now() })
-  $.ui.toast(`${MEMBERS[member].heart} ${MEMBERS[member].name} “${quote}” ${note}`)
+  $.ui.toast(`${MEMBERS[member].heart} ${nameOf(member)} “${quote}” ${note}`)
   dance($)
 }
 
@@ -156,18 +174,20 @@ const pass = async ($: Engine, moment: Moment): Promise<void> => {
   if ((await read($, moments)).includes(moment)) await update($, moments, list => list.filter(one => one !== moment))
 }
 
+const spentNote = (used: number): string => t(`한도를 ${Math.round(used)}% 썼어요`, `${Math.round(used)}% of the limit used`)
+
 /** The plan's limits and the context, as the moments they are when nearly spent. */
 const weigh = async ($: Engine, figures: Usage): Promise<void> => {
   const used = Math.max(0, ...figures.limits.filter(limit => limit.kind !== 'spend_limit').map(limit => limit.percentUsed))
   const full = figures.contextPercent ?? 0
 
-  if (used >= 95) await mark($, 'starved', `한도를 ${Math.round(used)}% 썼어요`)
-  else if (used >= 80) await mark($, 'quota', `한도를 ${Math.round(used)}% 썼어요`)
+  if (used >= 95) await mark($, 'starved', spentNote(used))
+  else if (used >= 80) await mark($, 'quota', spentNote(used))
   if (used < 60) {
     await pass($, 'starved')
     await pass($, 'quota')
   }
-  if (full >= 80) await mark($, 'heavy', `컨텍스트가 ${Math.round(full)}% 찼어요`)
+  if (full >= 80) await mark($, 'heavy', t(`컨텍스트가 ${Math.round(full)}% 찼어요`, `the context is ${Math.round(full)}% full`))
   else if (full < 50) await pass($, 'heavy')
 }
 
@@ -200,7 +220,7 @@ const reserve = async ($: Engine, draft: Draft, wanted?: MemberId): Promise<Task
       ...box.task,
       member,
       quote: say(member, 'start', turn, draft.role),
-      note: `${draft.role} 시작 · ${draft.title}`,
+      note: t(`${draft.role} 시작 · ${draft.title}`, `${roleName(draft.role)} started · ${draft.title}`),
     }
 
     // Only what has ended is history to trim: a task at work stays however long the list.
@@ -217,11 +237,11 @@ const reserve = async ($: Engine, draft: Draft, wanted?: MemberId): Promise<Task
 
   if (box.isWaveStart) {
     await update($, waveAt, () => now)
-    await speak($, { member: 'woni', quote: LEADER.wave, note: '멤버들에게 일을 맡기는 중', at: now })
+    await speak($, { member: 'woni', quote: LEADER.wave, note: t('멤버들에게 일을 맡기는 중', 'handing work to the members'), at: now })
   }
   await speak($, { member: task.member, quote: task.quote, note: task.note, at: now + 1 })
   dance($)
-  if (box.crowd >= CROWD) await mark($, 'crowd', `${box.crowd}개 작업이 한꺼번에 돌아가요`).catch(() => undefined)
+  if (box.crowd >= CROWD) await mark($, 'crowd', t(`${box.crowd}개 작업이 한꺼번에 돌아가요`, `${box.crowd} tasks running at once`)).catch(() => undefined)
   await update($, clockNow, () => now)
   if (box.isWaveStart && isAutoOpening && !(await read($, isPaneOpen)) && !(await read($, isPaneDismissed))) {
     // Unasked, so the surface seats it only where there is width to spare;
@@ -289,7 +309,7 @@ const settle = async ($: Engine, id: string, isOk: boolean, why: string, tokens?
         status: isOk ? 'done' : 'failed',
         endedAt,
         quote: say(task.member, isOk ? 'done' : 'fail', task.toolCount + task.title.length, task.role),
-        note: [`${task.role} ${isOk ? '끝' : '실패'}`, took, why].filter(part => part !== '').join(' · '),
+        note: [t(`${task.role} ${isOk ? '끝' : '실패'}`, `${roleName(task.role)} ${isOk ? 'done' : 'failed'}`), took, why].filter(part => part !== '').join(' · '),
         ...(tokens === undefined ? {} : { tokens: plus(task.tokens ?? ZERO, tokens) }),
         ...(report === '' ? {} : { report }),
         ...(isGuess ? { isGuessed: true } : {}),
@@ -313,7 +333,7 @@ const settle = async ($: Engine, id: string, isOk: boolean, why: string, tokens?
   await speak($, { member: ended.member, quote: ended.quote, note: ended.note, at: now })
   if (isOk) cheers[ended.member] = beat + CHEER_BEATS
   dance($)
-  $.ui.toast(`${member.heart} ${member.name} “${ended.quote}” ${ended.note}`)
+  $.ui.toast(`${member.heart} ${nameOf(ended.member)} “${ended.quote}” ${ended.note}`)
 
   if (!box.all.some(isActive)) {
     const since = await read($, waveAt)
@@ -321,10 +341,10 @@ const settle = async ($: Engine, id: string, isOk: boolean, why: string, tokens?
     const failed = wave.filter(task => task.status === 'failed').length
     await pass($, 'crowd').catch(() => undefined)
     const quote = failed > 0 ? say('woni', 'fail', wave.length + failed, '지휘') : wave.length >= 2 ? LEADER.sweep : LEADER.tasty
-    const note = failed > 0 ? `${wave.length}개 가운데 ${failed}개 실패` : `${wave.length}개 작업 끝`
+    const note = failed > 0 ? t(`${wave.length}개 가운데 ${failed}개 실패`, `${failed} of ${wave.length} failed`) : t(`${wave.length}개 작업 끝`, `${wave.length} ${wave.length === 1 ? 'task' : 'tasks'} done`)
 
     await speak($, { member: 'woni', quote, note, at: now + 1 })
-    if (wave.length >= 2) $.ui.toast(`${MEMBERS.woni.heart} 원이 “${quote}” ${note}`)
+    if (wave.length >= 2) $.ui.toast(`${MEMBERS.woni.heart} ${nameOf('woni')} “${quote}” ${note}`)
   }
   await update($, clockNow, () => now + 1)
 }
@@ -369,13 +389,16 @@ const touch = async ($: Engine, agentId: string, tool: string, detail: string, p
   )
 }
 
+/** How a call that did not go through is told. */
+const howOf = (how: '거절됨' | '실패'): string => (how === '거절됨' ? t('거절됨', 'Refused') : t('실패', 'Failed'))
+
 /** A member's call was refused or failed: her record says so instead of saying it was done. */
 const amend = async ($: Engine, agentId: string, call: string, how: '거절됨' | '실패'): Promise<void> => {
   await update($, tasks, list =>
     list.map(task =>
       task.id !== agentId || task.trail?.some(step => step.call === call) !== true
         ? task
-        : { ...task, trail: task.trail.map(step => (step.call !== call ? step : { ...step, text: `${how}: ${step.text.includes(': ') ? step.text.slice(step.text.indexOf(': ') + 2) : step.text}` })) },
+        : { ...task, trail: task.trail.map(step => (step.call !== call ? step : { ...step, text: `${howOf(how)}: ${step.text.includes(': ') ? step.text.slice(step.text.indexOf(': ') + 2) : step.text}` })) },
     ),
   )
 }
@@ -730,7 +753,8 @@ const LOCAL = new Set([
   'sandbox', 'bashes', 'keybindings', 'reload-plugins', 'remote-control', 'mobile', 'desktop', 'chrome', 'passes', 'stickers', 'extra-usage', 'install-github-app',
 ])
 
-const UNKEPT = '역할은 바뀌었지만 저장하지 못했어요. 이 세션에만 적용됩니다.'
+const unsaved = (): string => t('저장하지 못해서 이 세션에만 적용됩니다.', 'It could not be saved: it holds for this session only.')
+const unkept = (): string => t('역할은 바뀌었지만 저장하지 못했어요. 이 세션에만 적용됩니다.', 'The roles changed but could not be saved: they hold for this session only.')
 
 /**
  * Gives a kind of work to a member, who had it taking hers in exchange;
@@ -755,12 +779,12 @@ const giveRole = async ($: Engine, id: MemberId | null, role: WorkRole): Promise
   // Her own position is what there is with nothing kept.
   const isKept = await (isSameCast(next, CAST) ? $.store.delete(CAST_KEY) : $.store.set(CAST_KEY, next)).then(() => true, () => false)
 
-  if (!isKept) $.ui.toast(UNKEPT)
+  if (!isKept) $.ui.toast(unkept())
   $.ui.invalidate('prompt.section')
   if (id !== null && (await read($, isOn))) {
     const at = await $.clock.now()
 
-    await speak($, { member: id, quote: say(id, 'start', at, role), note: `이제부터 ${role} 담당`, at })
+    await speak($, { member: id, quote: say(id, 'start', at, role), note: t(`이제부터 ${role} 담당`, `on ${roleName(role)} from now on`), at })
   }
 
   return { cast: next, isKept }
@@ -781,7 +805,7 @@ const setup = async ($: Engine, isOpen: boolean): Promise<void> => {
   dance($)
 }
 
-const ROLE_NAMED: Record<string, WorkRole> = { 구현: '구현', build: '구현', 검토: '검토', review: '검토', 조사: '조사', research: '조사', 탐색: '탐색', explore: '탐색' }
+const ROLE_NAMED: Record<string, WorkRole> = { 구현: '구현', build: '구현', 검토: '검토', review: '검토', 조사: '조사', research: '조사', 탐색: '탐색', explore: '탐색', scout: '탐색' }
 
 const NAMED: Record<string, MemberId> = {
   원이: 'woni',
@@ -848,9 +872,9 @@ const tick = async ($: Engine): Promise<void> => {
     for (const task of active) {
       if (task.kind === 'orca') {
         // Launched where its result could not be followed: after an hour it is off the stage, its ending a guess.
-        if (task.out === undefined && now - task.startedAt > LOST_MS) await settle($, task.id, true, '결과는 직접 확인', undefined, '', true)
+        if (task.out === undefined && now - task.startedAt > LOST_MS) await settle($, task.id, true, t('결과는 직접 확인', 'check the result yourself'), undefined, '', true)
         if (task.out !== undefined && task.status === 'running' && now - task.startedAt > LOST_MS) {
-          const note = '한 시간이 넘도록 결과 파일이 안 보여요. 직접 확인해 주세요'
+          const note = t('한 시간이 넘도록 결과 파일이 안 보여요. 직접 확인해 주세요', 'No result file after more than an hour. Please check it yourself')
 
           await update($, tasks, list => list.map(one => (one.id === task.id && isActive(one) ? { ...one, status: 'waiting' as const, note } : one)))
         }
@@ -873,12 +897,12 @@ const tick = async ($: Engine): Promise<void> => {
         } else if (now - task.startedAt > 30_000) {
           // The engine lists an agent until it drops its task: one it no longer
           // lists has ended, and its turn's end did not reach this hook.
-          await settle($, task.id, true, '결과는 직접 확인', undefined, '', true)
+          await settle($, task.id, true, t('결과는 직접 확인', 'check the result yourself'), undefined, '', true)
         }
         continue
       }
       if (info.status === 'completed') await settle($, task.id, true, '')
-      else if (info.status === 'failed' || info.status === 'killed') await settle($, task.id, false, info.status === 'killed' ? '중단됨' : '')
+      else if (info.status === 'failed' || info.status === 'killed') await settle($, task.id, false, info.status === 'killed' ? stopped() : '')
       else if ((info.status === 'waiting') !== (task.status === 'waiting')) {
         const status = info.status === 'waiting' ? ('waiting' as const) : ('running' as const)
 
@@ -889,7 +913,7 @@ const tick = async ($: Engine): Promise<void> => {
     for (const task of active) {
       if (task.isSlow === true || now - task.startedAt < SLOW_MS) continue
       const quote = say(task.member, 'slow', task.toolCount + task.title.length, task.role)
-      const note = `${task.role} 계속하는 중 · ${spoken(now - task.startedAt)} 지남`
+      const note = t(`${task.role} 계속하는 중 · ${spoken(now - task.startedAt)} 지남`, `still on ${roleName(task.role)} · ${spoken(now - task.startedAt)} in`)
 
       const box = { isSlowed: false }
 
@@ -906,7 +930,7 @@ const tick = async ($: Engine): Promise<void> => {
       await speak($, { member: task.member, quote, note, at: now })
       if (task.member === 'zena') {
         await pass($, 'dawdle')
-        await mark($, 'dawdle', `제나가 ${spoken(now - task.startedAt)}째 ${task.role} 중`)
+        await mark($, 'dawdle', t(`제나가 ${spoken(now - task.startedAt)}째 ${task.role} 중`, `ZENA has been on ${roleName(task.role)} for ${spoken(now - task.startedAt)}`))
       }
     }
 
@@ -916,14 +940,83 @@ const tick = async ($: Engine): Promise<void> => {
   }
 }
 
-const DEMO: readonly (readonly [Role, string, number, boolean])[] = [
-  ['구현', '시연: 로그인 화면 고치기', 9000, true],
-  ['검토', '시연: 바뀐 코드 다시 보기', 13_000, true],
-  ['조사', '시연: 최신 문서 찾아 정리', 6000, true],
-  ['탐색', '시연: 설정 파일 위치 찾기', 4000, false],
+const stopped = (): string => t('중단됨', 'stopped')
+
+const DEMO: readonly (readonly [Role, string, string, number, boolean])[] = [
+  ['구현', '로그인 화면 고치기', 'fix the login screen', 9000, true],
+  ['검토', '바뀐 코드 다시 보기', 'look over the changed code', 13_000, true],
+  ['조사', '최신 문서 찾아 정리', 'find and sum up the latest docs', 6000, true],
+  ['탐색', '설정 파일 위치 찾기', 'find where the config file is', 4000, false],
 ]
 
 let timer: Timer | undefined
+
+/** The language the mod's own setting names, when it names one. */
+let fixedLang: Lang | undefined
+/** Whether the language in use is one the person picked by command. */
+let isLangPicked = false
+/** Whether the session's language has been settled since this module loaded: until then nothing is changed by guess. */
+let isLangRead = false
+/** How many times a language was picked or given back by command: a reading begun before one does not undo it. */
+let langPicks = 0
+
+/** Registers `/rescene`, described in the language in use. */
+const enroll = ($: Engine): Promise<unknown> =>
+  $.command.register({
+    name: 'rescene',
+    description: t('리센느 모드: 멤버 현황 패널을 열거나 켜고 끈다', 'RESCENE mode: open the members panel, or turn the mode on and off'),
+    argumentHint: t(
+      '[on|off|usage|cup|clear|demo|<멤버>|all|to <멤버|자동>|role [<멤버> <역할>|auto]|lang [ko|en|auto]]',
+      '[on|off|usage|cup|clear|demo|<member>|all|to <member|auto>|role [<member> <role>|auto]|lang [ko|en|auto]]',
+    ),
+    immediate: true,
+  })
+
+/** Korean for a reader the session's signs say is Korean, English for anyone else. */
+const detect = async ($: Engine): Promise<Lang> => {
+  const setting = (await $.config.list().catch(() => [])).find(row => row.key === 'language')?.value
+  // Each by its own name: the variables a module reads are the ones written in it.
+  const env = [await $.env.get('LC_ALL').catch(() => undefined), await $.env.get('LC_MESSAGES').catch(() => undefined), await $.env.get('LANG').catch(() => undefined)]
+
+  return langOf({ ...(typeof setting === 'string' ? { setting } : {}), env, ...runtimeSigns() })
+}
+
+/**
+ * Settles the language: the one picked by command, else the one the mod's
+ * setting names, else what this session already came to, else by the signs.
+ */
+const readLang = async ($: Engine): Promise<void> => {
+  const picks = langPicks
+  const picked = pinned(await $.store.get(LANG_KEY).catch(() => undefined))
+  const held = await read($, lang)
+  const next = picked ?? fixedLang ?? held ?? (await detect($))
+
+  // Picked by command while this was read: that pick has the last word.
+  if (picks !== langPicks) return
+  isLangPicked = picked !== undefined
+  isLangRead = true
+  setLang(next)
+  if (held === next) return
+  await update($, lang, () => next)
+  // Briefed in the other language before (a pick made in another session, a setting changed): briefed anew in this one.
+  if (held !== null) {
+    await update($, briefed, told => (told === 'yes' ? 'no' : told))
+    $.ui.invalidate('prompt.section')
+  }
+}
+
+/** Changes the language in use: the screens at once, and the main loop is briefed anew in it. */
+const speakIn = async ($: Engine, next: Lang): Promise<void> => {
+  const isNew = langNow() !== next
+
+  setLang(next)
+  await update($, lang, () => next)
+  if (!isNew) return
+  await update($, briefed, told => (told === 'yes' ? 'no' : told))
+  $.ui.invalidate('prompt.section')
+  await enroll($).catch(() => undefined)
+  dance($)
+}
 
 export const register: Register = (on, options) => {
   const isLeaderVoiced = options.leaderVoice !== false
@@ -934,16 +1027,20 @@ export const register: Register = (on, options) => {
   const isScreenKept = options.keepScreen === true
 
   isAutoOpening = options.autoOpen !== false
+  // Named in the setting, that language from the first line; otherwise a first reading, settled as the session starts.
+  fixedLang = pinned(options.language)
+  setLang(fixedLang ?? langOf(runtimeSigns()))
   palette = options.theme === 'dark' || options.theme === 'light' ? options.theme : 'auto'
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({
-      name: 'rescene',
-      description: '리센느 모드: 멤버 현황 패널을 열거나 켜고 끈다',
-      argumentHint: '[on|off|usage|cup|clear|demo|<멤버>|all|to <멤버|자동>|role [<멤버> <역할>|auto]]',
-      immediate: true,
-    })
+    // Registered before anything is waited for, in the language of the first reading.
+    await enroll($)
     const flipped = flips
+    const spoke = langNow()
+
+    // Settled before anything else is waited for: a prompt typed meanwhile is not read by a first guess.
+    await readLang($).catch(() => undefined)
+    if (langNow() !== spoke) await enroll($).catch(() => undefined)
 
     // Calls open with no turn under way are of a module that is gone, and have ended; with one under
     // way they may still be running, and are closed by their own end or the turn's.
@@ -988,13 +1085,18 @@ export const register: Register = (on, options) => {
       }
       $.ui.invalidate('prompt.section')
 
-      return { text: asked === 'on' ? `${MEMBERS.woni.heart} 원이 “${LEADER.wave}” 리센느 모드를 켰어요.` : `${MEMBERS.woni.heart} 원이 “애기 자께예~♡” 리센느 모드를 껐어요. /rescene on 으로 다시 켭니다.` }
+      return {
+        text:
+          asked === 'on'
+            ? `${MEMBERS.woni.heart} ${nameOf('woni')} “${LEADER.wave}” ${t('리센느 모드를 켰어요.', 'RESCENE mode is on.')}`
+            : `${MEMBERS.woni.heart} ${nameOf('woni')} “애기 자께예~♡” ${t('리센느 모드를 껐어요. /rescene on 으로 다시 켭니다.', 'RESCENE mode is off. /rescene on turns it back on.')}`,
+      }
     }
     if (asked === 'usage') {
       await refreshUsage($).catch(() => undefined)
       await stamp($)
 
-      return { text: ['RESCENE 사용량', ...usageLines(await sceneOf($))].join('\n') }
+      return { text: [t('RESCENE 사용량', 'RESCENE usage'), ...usageLines(await sceneOf($))].join('\n') }
     }
     if (asked === 'clear') {
       // What the ended tasks cost stays counted: only the history is cleared.
@@ -1010,22 +1112,52 @@ export const register: Register = (on, options) => {
       await update($, feed, () => [])
       await update($, cup, () => [])
 
-      return { text: '끝난 작업 기록을 지웠어요.' }
+      return { text: t('끝난 작업 기록을 지웠어요.', 'Cleared the record of finished tasks.') }
     }
     if (asked === 'cup') {
       const ranked = (await read($, cup)).slice(0, 8)
-      const rows = ranked.map((line, index) => `${index + 1}위 ${MEMBERS[line.member].heart} ${MEMBERS[line.member].name} “${line.quote}” ${line.count}번`)
+      const rows = ranked.map((line, index) => t(`${index + 1}위 ${MEMBERS[line.member].heart} ${nameOf(line.member)} “${line.quote}” ${line.count}번`, `#${index + 1} ${MEMBERS[line.member].heart} ${nameOf(line.member)} “${line.quote}” ×${line.count}`))
 
-      return { text: ['명대사 월드컵 (이 세션에서 많이 나온 대사)', ...(rows.length === 0 ? ['아직 나온 대사가 없어요.'] : rows)].join('\n') }
+      return { text: [t('명대사 월드컵 (이 세션에서 많이 나온 대사)', 'Quote cup (the lines said most this session)'), ...(rows.length === 0 ? [t('아직 나온 대사가 없어요.', 'No line said yet.')] : rows)].join('\n') }
     }
     if (asked === 'demo') {
-      for (const [index, [role, title, ms, isOk]] of DEMO.entries()) {
-        const task = await reserve($, { id: `orca:demo:${index}`, kind: 'orca', role, engine: '시연', title })
+      for (const [index, [role, ko, en, ms, isOk]] of DEMO.entries()) {
+        const what = t(ko, en)
+        const task = await reserve($, { id: `orca:demo:${index}`, kind: 'orca', role, engine: '시연', title: t(`시연: ${what}`, `Demo: ${what}`) })
 
-        $.clock.after(ms, () => void settle($, task.id, isOk, '시연', undefined, isOk ? `시연이라 실제로 한 일은 없어요 (${title.slice(4)})` : '').catch(() => undefined))
+        $.clock.after(ms, () => void settle($, task.id, isOk, t('시연', 'demo'), undefined, isOk ? t(`시연이라 실제로 한 일은 없어요 (${what})`, `A demo: nothing was really done (${what})`) : '').catch(() => undefined))
       }
 
-      return { text: '시연을 시작했어요. 실제 작업이 아니라 화면을 보여 주는 가짜 작업 4개가 15초쯤 돌아갑니다.' }
+      return { text: t('시연을 시작했어요. 실제 작업이 아니라 화면을 보여 주는 가짜 작업 4개가 15초쯤 돌아갑니다.', 'The demo has started: four make-believe tasks run for about 15 seconds to show the screen. No real work is done.') }
+    }
+
+    if (asked === 'lang' || asked === '언어' || asked.startsWith('lang ') || asked.startsWith('언어 ')) {
+      const word = asked.split(/\s+/)[1] ?? ''
+      const how = (): string => t('바꾸려면 /rescene lang ko · en · auto (auto: 한국어 사용자는 한국어, 그 밖에는 영어)', 'To change: /rescene lang ko · en · auto (auto: Korean for a Korean reader, English for anyone else)')
+      const from = (): string => (isLangPicked ? t('직접 고름', 'picked by you') : fixedLang !== undefined ? t('모드 설정 language', "the mod's language setting") : t('자동', 'auto'))
+
+      if (word === '') return { text: [t(`지금 언어: 한국어 (${from()})`, `Language now: English (${from()})`), how()].join('\n') }
+      if (word === 'auto' || word === '자동') {
+        langPicks += 1
+        const isKept = await $.store.delete(LANG_KEY).then(() => true, () => false)
+
+        isLangPicked = false
+        isLangRead = true
+        await speakIn($, fixedLang ?? (await detect($)))
+
+        return { text: [t(`언어를 자동으로 돌렸어요. 지금은 한국어입니다 (${from()}).`, `The language is back to auto. It is English now (${from()}).`), ...(isKept ? [] : [unsaved()])].join('\n') }
+      }
+      const next = pinned(word)
+
+      if (next === undefined) return { text: how() }
+      langPicks += 1
+      const isKept = await $.store.set(LANG_KEY, next).then(() => true, () => false)
+
+      isLangPicked = true
+      isLangRead = true
+      await speakIn($, next)
+
+      return { text: isKept ? t('이제 한국어로 보여 드려요. 다음 세션에도 그대로입니다.', 'English from now on, in later sessions too.') : [t('이제 한국어로 보여 드려요.', 'English from now on.'), unsaved()].join('\n') }
     }
 
     if (asked === 'to' || asked.startsWith('to ')) {
@@ -1034,41 +1166,46 @@ export const register: Register = (on, options) => {
       if (who === 'auto' || who === '자동') {
         await update($, target, () => null)
 
-        return { text: '자동으로 돌렸어요. 원이가 알아서 일을 나눠 맡깁니다.' }
+        return { text: t('자동으로 돌렸어요. 원이가 알아서 일을 나눠 맡깁니다.', 'Back to auto: WONI hands the work out as she sees fit.') }
       }
       const named = NAMED[who]
 
-      if (named === undefined) return { text: '받을 멤버를 적어 주세요: /rescene to 자동 · 원이(직접 처리) · 리브 · 미나미 · 메이 · 제나' }
+      if (named === undefined) return { text: t('받을 멤버를 적어 주세요: /rescene to 자동 · 원이(직접 처리) · 리브 · 미나미 · 메이 · 제나', 'Name who takes it: /rescene to auto · WONI (does it herself) · LIV · MINAMI · MAY · ZENA') }
       await update($, target, () => named)
 
-      return { text: named === 'woni' ? `다음 명령부터 ${MEMBERS.woni.heart} 원이가 맡기지 않고 직접 처리합니다. 풀려면 /rescene to 자동` : `다음 명령부터 ${MEMBERS[named].heart} ${MEMBERS[named].name}에게 맡깁니다. 풀려면 /rescene to 자동` }
+      return {
+        text:
+          named === 'woni'
+            ? t(`다음 명령부터 ${MEMBERS.woni.heart} 원이가 맡기지 않고 직접 처리합니다. 풀려면 /rescene to 자동`, `From the next prompt ${MEMBERS.woni.heart} WONI does the work herself instead of handing it on. To undo: /rescene to auto`)
+            : t(`다음 명령부터 ${MEMBERS[named].heart} ${nameOf(named)}에게 맡깁니다. 풀려면 /rescene to 자동`, `From the next prompt the work goes to ${MEMBERS[named].heart} ${nameOf(named)}. To undo: /rescene to auto`),
+      }
     }
     if (asked === 'role' || asked === '역할' || asked.startsWith('role ') || asked.startsWith('역할 ')) {
       const [first = '', second = ''] = asked.split(/\s+/).slice(1)
-      const how = '바꾸려면 /rescene role 리브 구현 (멤버: 리브·미나미·메이·제나 / 역할: 구현·검토·조사·탐색), 자동으로 돌리려면 /rescene role auto'
+      const how = t('바꾸려면 /rescene role 리브 구현 (멤버: 리브·미나미·메이·제나 / 역할: 구현·검토·조사·탐색), 자동으로 돌리려면 /rescene role auto', 'To change: /rescene role LIV build (members: LIV·MINAMI·MAY·ZENA / roles: build·review·research·scout). Back to auto: /rescene role auto')
 
       if (first === '') {
         await setup($, true)
 
-        return { text: ['RESCENE 역할 설정', ...castLines(await read($, cast)), how].join('\n') }
+        return { text: [t('RESCENE 역할 설정', 'RESCENE roles'), ...castLines(await read($, cast)), how].join('\n') }
       }
       if (first === 'auto' || first === '자동' || first === 'reset' || first === '기본') {
         const given = await giveRole($, null, '구현')
 
-        return { text: ['역할을 자동(기본)으로 돌렸어요.', ...castLines(given.cast), ...(given.isKept ? [] : [UNKEPT])].join('\n') }
+        return { text: [t('역할을 자동(기본)으로 돌렸어요.', 'The roles are back to auto (default).'), ...castLines(given.cast), ...(given.isKept ? [] : [unkept()])].join('\n') }
       }
       const member = NAMED[first] ?? NAMED[second]
       const role = ROLE_NAMED[second] ?? ROLE_NAMED[first]
 
-      if (member === undefined || member === 'woni' || role === undefined) return { text: member === 'woni' ? `원이는 리더라 지휘를 그대로 맡습니다. ${how}` : how }
+      if (member === undefined || member === 'woni' || role === undefined) return { text: member === 'woni' ? t(`원이는 리더라 지휘를 그대로 맡습니다. ${how}`, `WONI is the leader and keeps the lead. ${how}`) : how }
 
       const given = await giveRole($, member, role)
 
-      return { text: [`${MEMBERS[member].heart} ${MEMBERS[member].name}가 이제 ${role} 담당이에요.`, ...castLines(given.cast), ...(given.isKept ? [] : [UNKEPT])].join('\n') }
+      return { text: [t(`${MEMBERS[member].heart} ${nameOf(member)}가 이제 ${role} 담당이에요.`, `${MEMBERS[member].heart} ${nameOf(member)} now has the ${roleName(role)} work.`), ...castLines(given.cast), ...(given.isKept ? [] : [unkept()])].join('\n') }
     }
     const viewed = NAMED[asked]
 
-    if (asked !== '' && asked !== 'all' && viewed === undefined) return { text: '쓸 수 있는 말: on · off · usage · cup · clear · demo · 멤버 이름(활동 보기) · all · to 멤버 이름|자동(지명) · role(역할 설정)' }
+    if (asked !== '' && asked !== 'all' && viewed === undefined) return { text: t('쓸 수 있는 말: on · off · usage · cup · clear · demo · 멤버 이름(활동 보기) · all · to 멤버 이름|자동(지명) · role(역할 설정) · lang(언어)', "What you can say: on · off · usage · cup · clear · demo · a member's name (her backstage) · all · to <member>|auto (who takes the next prompt) · role (set the roles) · lang (language)") }
     if (asked !== '') await update($, focus, () => viewed ?? null)
     await update($, isCasting, () => false)
     await peekAt($).catch(() => undefined)
@@ -1083,9 +1220,9 @@ export const register: Register = (on, options) => {
     dance($)
     const scene = await sceneOf($)
 
-    if (scene.focus !== null) return { text: [`${MEMBERS[scene.focus].heart} ${MEMBERS[scene.focus].name} 백스테이지`, ...backstageLines(scene.focus, scene, 24)].join('\n') }
+    if (scene.focus !== null) return { text: [`${MEMBERS[scene.focus].heart} ${nameOf(scene.focus)} ${t('백스테이지', 'backstage')}`, ...backstageLines(scene.focus, scene, 24)].join('\n') }
 
-    return { text: ['“이봐협에서 나왔습니다.” RESCENE 멤버 현황 패널을 열었어요.', ...rosterLines(scene)].join('\n') }
+    return { text: [`“이봐협에서 나왔습니다.” ${t('RESCENE 멤버 현황 패널을 열었어요.', 'The RESCENE members panel is open.')}`, ...rosterLines(scene)].join('\n') }
   })
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
@@ -1118,6 +1255,11 @@ export const register: Register = (on, options) => {
     if (!TYPED.has(e.origin.kind)) return next(e)
     // A theme changed since the last prompt is followed from this one: no setting is watched as it is made.
     await readTheme($).catch(() => undefined)
+    // Nobody picked a language and the signs said English, yet the person writes Korean: Korean from here on.
+    if (isLangRead && !isLangPicked && fixedLang === undefined && langNow() === 'en' && isKorean(e.text)) {
+      await speakIn($, 'ko').catch(() => undefined)
+      $.ui.toast('한국어로 바꿨어요 · English: /rescene lang en')
+    }
     const briefing = await read($, briefed)
     const isModeOn = await read($, isOn)
     const said = e.text.trimStart().startsWith('/') ? '' : askOf(e.text)
@@ -1130,7 +1272,7 @@ export const register: Register = (on, options) => {
     const aimed = isModeOn && isRequest ? await read($, target) : null
 
     if (isModeOn && said !== '') {
-      await mark($, 'hello', '새 세션, 잘 부탁드립니다').catch(() => undefined)
+      await mark($, 'hello', t('새 세션, 잘 부탁드립니다', 'a new session')).catch(() => undefined)
       asked = said
       askedTo = aimed
       await update($, turn, now => (now === null ? now : { startedAt: now.startedAt, ask: said, ...(aimed === null ? {} : { to: aimed }) }))
@@ -1154,7 +1296,7 @@ export const register: Register = (on, options) => {
       entered.push(heard)
     }
     if (isLeaderVoiced && !isModeOn && briefing === 'undo') {
-      told.push(STAND_DOWN)
+      told.push(standDown())
       entered.push(() => update($, briefed, () => 'no' as const))
     }
     // The member the person picked above the prompt takes this one.
@@ -1173,7 +1315,7 @@ export const register: Register = (on, options) => {
     if (isMain) await update($, briefed, told => (told === 'yes' ? 'no' : told)).catch(() => undefined)
     if (isMain && (await read($, isOn).catch(() => false))) {
       await pass($, 'compacted').catch(() => undefined)
-      await mark($, 'compacted', '대화를 요약해서 줄였어요').catch(() => undefined)
+      await mark($, 'compacted', t('대화를 요약해서 줄였어요', 'the conversation was summarized')).catch(() => undefined)
     }
 
     return compacted
@@ -1189,7 +1331,7 @@ export const register: Register = (on, options) => {
   // The main session's own turn: what was asked, and since when.
   on('turn.start', async ($, e, next) => {
     // A member's own turn opens with her brief, and starts while the main one is under way.
-    const isMembers = e.text.includes(MARK) || ((await read($, turn)) !== null && (await read($, tasks)).some(isActive))
+    const isMembers = isCast(e.text) || ((await read($, turn)) !== null && (await read($, tasks)).some(isActive))
 
     if (!isMembers && (await read($, isOn).catch(() => false))) {
       const startedAt = await $.clock.now()
@@ -1219,8 +1361,8 @@ export const register: Register = (on, options) => {
     const member = MEMBERS[task.member]
     const started = await next({
       ...e,
-      description: `${member.heart} ${member.name} · ${title}`,
-      prompt: isMemberVoiced && !e.prompt.includes(MARK) ? e.prompt + memberBlock(task.member, role) : e.prompt,
+      description: `${member.heart} ${nameOf(task.member)} · ${title}`,
+      prompt: isMemberVoiced && !isCast(e.prompt) ? e.prompt + memberBlock(task.member, role) : e.prompt,
     }).catch(async (error: unknown) => {
       await drop($, task.id)
       throw error
@@ -1260,7 +1402,7 @@ export const register: Register = (on, options) => {
           const name = e.file_path.slice(e.file_path.lastIndexOf('/') + 1)
 
           await pass($, 'again').catch(() => undefined)
-          await mark($, 'again', `${name}, 이번 턴에만 ${seen}번째 읽어요`).catch(() => undefined)
+          await mark($, 'again', t(`${name}, 이번 턴에만 ${seen}번째 읽어요`, `${name}, read ${seen} times this turn`)).catch(() => undefined)
         }
       }
       // The main session calling a tool is a turn under way, whether or not its start was seen
@@ -1279,7 +1421,7 @@ export const register: Register = (on, options) => {
       const leave = async (how: '' | '거절됨' | '실패' = ''): Promise<void> => {
         const ended = await $.clock.now()
         const what = past.includes(': ') ? past.slice(past.indexOf(': ') + 2) : past
-        const text = how === '' ? past : `${how}: ${what}`
+        const text = how === '' ? past : `${howOf(how)}: ${what}`
         const box = { isHers: false }
 
         await update($, live, now => {
@@ -1363,7 +1505,7 @@ export const register: Register = (on, options) => {
         if (isOrcaVoiced && spec !== undefined && run.rawSpec !== undefined && !isMade) {
           const text = brief
 
-          if (text !== undefined && !text.includes(MARK)) {
+          if (text !== undefined && !isCast(text)) {
             const path = voicedSpecPath(spec, made.some(one => one.task.member === task.member) ? `${task.member}-${index}` : task.member)
             const isWritten = await $.fs.write(path, text + orcaBlock(task.member, role)).then(() => true, () => false)
 
@@ -1415,23 +1557,23 @@ export const register: Register = (on, options) => {
       if (term !== undefined) await update($, tasks, list => list.map(one => (one.id === made[0]?.task.id ? { ...one, term } : one)))
       for (const { task } of made) {
         if (isUnopened) {
-          await settle($, task.id, false, '터미널을 열지 못함')
+          await settle($, task.id, false, t('터미널을 열지 못함', 'the terminal could not be opened'))
           continue
         }
         if (task.out !== undefined) await pollWorker($, task).catch(() => undefined)
         if (!isLeft) await settle($, task.id, ran.isError !== true, '')
         else if (task.out === undefined) {
-          const note = '결과 파일 경로를 읽지 못해서, 끝났는지는 직접 확인해야 해요'
+          const note = t('결과 파일 경로를 읽지 못해서, 끝났는지는 직접 확인해야 해요', 'The result file path could not be read: check for yourself whether it has ended')
 
           await update($, tasks, list => list.map(one => (one.id === task.id ? { ...one, status: 'waiting' as const, note } : one)))
         }
       }
 
       const lines = made.map(({ task, voiced }) => {
-        const who = `${MEMBERS[task.member].name}(${task.role})`
-        const copy = voiced === undefined ? '' : ` 작업지시 끝에 ${MEMBERS[task.member].name} 말투 지시를 붙인 사본(${voiced})으로 실행했다.`
+        const name = nameOf(task.member)
+        const copy = voiced === undefined ? '' : t(` 작업지시 끝에 ${name} 말투 지시를 붙인 사본(${voiced})으로 실행했다.`, ` It ran from a copy of the spec with ${name}'s voice block at its end (${voiced}).`)
 
-        return `[리센느 배정] fleet-run ${task.engine} "${task.title}" 작업은 ${who}가 맡았다.${copy}`
+        return t(`[리센느 배정] fleet-run ${task.engine} "${task.title}" 작업은 ${name}(${task.role})가 맡았다.${copy}`, `[RESCENE cast] The fleet-run ${task.engine} task "${task.title}" was taken by ${name} (${roleName(task.role)}).${copy}`)
       })
 
       return { ...ran, context: [...(ran.context ?? []), ...lines] }
@@ -1450,16 +1592,16 @@ export const register: Register = (on, options) => {
       if (task !== undefined) {
         const at = await $.clock.now()
 
-        await speak($, { member: task.member, quote: say(task.member, 'denied', task.toolCount, task.role), note: `${e.tool} 거절당함`, at })
+        await speak($, { member: task.member, quote: say(task.member, 'denied', task.toolCount, task.role), note: t(`${e.tool} 거절당함`, `${e.tool} refused`), at })
       }
     }
     if (e.tool === 'Agent' && e.agentId === undefined && ran.deny === undefined) {
       const task = (await read($, tasks)).find(one => one.call === e.tool_use_id && one.kind === 'agent')
 
       if (task !== undefined) {
-        const who = `${MEMBERS[task.member].name}(${task.role})`
+        const name = nameOf(task.member)
 
-        return { ...ran, context: [...(ran.context ?? []), `[리센느 배정] 이 작업은 ${who}가 맡았다. 사용자에게 전할 때는 ${MEMBERS[task.member].name}가 한 일로 말한다.`] }
+        return { ...ran, context: [...(ran.context ?? []), t(`[리센느 배정] 이 작업은 ${name}(${task.role})가 맡았다. 사용자에게 전할 때는 ${name}가 한 일로 말한다.`, `[RESCENE cast] This task was taken by ${name} (${roleName(task.role)}). When you tell the person, speak of it as ${name}'s work.`)] }
       }
     }
 
@@ -1480,7 +1622,7 @@ export const register: Register = (on, options) => {
         await stamp($)
       } else {
         await adopt($, e.agentId).catch(() => undefined)
-        const why = e.reason === 'aborted' ? '중단됨' : e.reason === 'error' ? 'API 오류' : e.reason === 'refusal' ? '거절' : ''
+        const why = e.reason === 'aborted' ? stopped() : e.reason === 'error' ? t('API 오류', 'API error') : e.reason === 'refusal' ? t('거절', 'refusal') : ''
 
         await settle($, e.agentId, e.reason === 'answer', why, spent, firstLine(e.answer)).catch(() => undefined)
         const summary = linesOf(e.answer ?? '', 14)
@@ -1500,10 +1642,10 @@ export const register: Register = (on, options) => {
     const who = doing === undefined ? undefined : MEMBERS[doing[0] as MemberId]
     const word =
       task !== undefined
-        ? `${MEMBERS[task.member].heart} ${MEMBERS[task.member].name} ${task.detail ?? `${task.role} 중`}`
+        ? `${MEMBERS[task.member].heart} ${nameOf(task.member)} ${task.detail ?? t(`${task.role} 중`, `on ${roleName(task.role)}`)}`
         : who !== undefined && doing !== undefined && e.props.mode === 'tool-use'
-          ? `${who.heart} ${who.name} ${doing[1].phrase}`
-          : `${MEMBERS.woni.heart} ${SPINNER[e.props.mode] ?? SPINNER.thinking}`
+          ? `${who.heart} ${nameOf(doing[0] as MemberId)} ${doing[1].phrase}`
+          : `${MEMBERS.woni.heart} ${spinnerOf(e.props.mode)}`
 
     return next({ ...e, props: { ...e.props, word } })
   })
@@ -1519,7 +1661,7 @@ export const register: Register = (on, options) => {
       <Box gap={1}>
         <Text color={line}>♥</Text>
         <Text backgroundColor={MEMBERS.woni.color} color={MEMBERS.woni.ink} bold>
-          {' 원이 '}
+          {` ${nameOf('woni')} `}
         </Text>
         <Text color={line} italic>{`“${quote}”`}</Text>
         <Text dimColor>{spoken(e.props.durationMs)}</Text>
