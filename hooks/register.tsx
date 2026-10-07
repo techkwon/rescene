@@ -33,7 +33,7 @@ const WATCH_MS = 6000
 const PANE_SIZE = { rows: 36, columns: 72 } as const
 const LOST_MS = 3_600_000
 /** Whether a task already ends with a member's block, in either language. */
-const isCast = (text: string): boolean => MARKS.some(mark => text.includes(mark))
+const isCast = (text: string): boolean => MARKS.some(opening => text.includes(opening))
 const TYPED = new Set(['composer', 'bridge', 'sdk'])
 const standDown = (): string =>
   t('리센느 모드가 꺼졌다. 지금부터는 원이 말투와 멤버 배정 이야기를 쓰지 않고 평소대로 답한다.', "RESCENE mode is off. From now on answer as usual, without WONI's voice or any talk of members and casting.")
@@ -181,8 +181,10 @@ const weigh = async ($: Engine, figures: Usage): Promise<void> => {
   const used = Math.max(0, ...figures.limits.filter(limit => limit.kind !== 'spend_limit').map(limit => limit.percentUsed))
   const full = figures.contextPercent ?? 0
 
-  if (used >= 95) await mark($, 'starved', spentNote(used))
-  else if (used >= 80) await mark($, 'quota', spentNote(used))
+  const spentSoFar = spentNote(used)
+
+  if (used >= 95) await mark($, 'starved', spentSoFar)
+  else if (used >= 80) await mark($, 'quota', spentSoFar)
   if (used < 60) {
     await pass($, 'starved')
     await pass($, 'quota')

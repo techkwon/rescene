@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md)
 
-A mod (plugin) for Claude Code in which **WONI of the K-pop group RESCENE conducts, and LIV, MINAMI, MAY and ZENA take the work and report back in their own voices**. A card for each member shows who is doing what right now. It is an unofficial fan mod made by a REMINE (a RESCENE fan). It runs in Korean or English: Korean for a Korean reader, English for anyone else. Version 0.9.0.
+A mod (plugin) for Claude Code in which **WONI of the K-pop group RESCENE conducts, and LIV, MINAMI, MAY and ZENA take the work and report back in their own voices**. A card for each member shows who is doing what right now. It is an unofficial fan mod made by a REMINE (a RESCENE fan). It runs in Korean or English: Korean for a Korean reader, English for anyone else. Version 0.9.1.
 
 ![Three members at work in the demo](docs/screenshots/en-working.png)
 
